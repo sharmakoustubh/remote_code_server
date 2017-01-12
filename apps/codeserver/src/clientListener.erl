@@ -1,5 +1,5 @@
 -module(clientListener).
--export([]).
+-export([is_restricted/2]).
 
 start_server()->
     spawn(fun()-> {ok, LSock} = gen_tcp:listen(50555, [binary, {packet, 0}, 
@@ -25,6 +25,7 @@ do_recv(Sock) ->
 	    ModuleName = binary_to_list(ModuleName_bin)--"\n",
 	    FunctionName = binary_to_list(FunctionName_bin)--"\n",
 	    code:load_file(ModuleName),
+	    
 	    Result = ModuleName:FunctionName(),
 	    gen_tcp:send(From_Sock,list_to_binary(Result));
 	
@@ -41,4 +42,7 @@ do_recv(Sock) ->
 	
 	end.
 
-
+is_restricted(Module,Function)->
+    {ok, List} = keep_Specs:fetch(),
+    io:format("~p~n",[List]),
+    lists:member({Module,Function},List).
