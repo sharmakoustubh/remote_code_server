@@ -1,6 +1,8 @@
 -module(file_handler).
--export([file_handler_main_function/3,create_record_now/2,get_files/2,get_module_names/2,get_module_info/1,get_md5/1]).
--record(file_poller_record, {module_name,filetype,specs,
+-export([file_handler_main_function/3,create_record/2,get_files/2,get_module_name/2,get_module_info/1,get_md5/1]).
+-record(file_poller_record, {module_name,
+			     filetype,
+			     specs,
  			     module_info,
  			     module_md5 }).
 
@@ -11,14 +13,10 @@ file_handler_main_function(Records_list,Old_erl_files,Old_beam_files)->
     io:format("~p~n",[Beam_files]),
     Joint_erl_beam_list =lists:append(Erl_files,Beam_files),
     io:format("~p~n",[Joint_erl_beam_list]),
-    
-    %% Old_erl_files = createMemoryFunction(Erl_files,Old_erl_files),
-    %% Old_beam_files = createMemoryFunction(Beam_files,Old_beam_files),
-    
     New_Rec_list1 =  createRecordForNewFiles( Old_erl_files,"erl",Erl_files,Records_list),
     New_Rec_list2 =   createRecordForNewFiles(Old_beam_files,"beam",Beam_files,New_Rec_list1),
-    io:format("~p~n",[New_Rec_list2]).
-%%    file_handler_main_function(New_Rec_list2,Erl_files,Beam_files).
+    io:format("~p~n",[New_Rec_list2]),
+    New_Rec_list2.
 
 createMemoryFunction([H|New_Files],Old_Files)->
     case  lists:member(H,Old_Files) of
@@ -35,7 +33,7 @@ createMemoryFunction([],Old_Files) ->
 createRecordForNewFiles(File_list,FileType,[H|New_file],Acc)->
     case  lists:member(H,File_list) of
 	false ->
-	    New_Rec =  create_record_now(H,FileType),
+	    New_Rec =  create_record(H,FileType),
 	    New_Acc = [New_Rec|Acc],
 	    createRecordForNewFiles(File_list,FileType,New_file,New_Acc);
 	
@@ -46,46 +44,25 @@ createRecordForNewFiles(File_list,FileType,[H|New_file],Acc)->
 createRecordForNewFiles(File_list,FileType,[],Acc)->
     Acc.
 
-
-
-
-%% Records_erl = [create_record_now(File_erl,"erl")||File_erl<-Erl_files],
-%% Records_beam = [create_record_now(File_Beam,"beam")||File_Beam<-Beam_files],
-%% R1 = [Records_erl|Records_beam],
-%% Updated_record = lists:append(Records_erl,Records_beam),
-%% timer:sleep(100),
-%% io:format("~p~n",[Updated_record]).
-%% 						%    file_handler_main_function(Updated_record,Erl_files,Beam_files).
-
-
-create_record_now(File_path,Filetype) ->
-    Mod_name = get_module_names(File_path,Filetype), 
-						%  io:format("~p~n",[Mod_name]),
+create_record(File_path,Filetype) ->
+    Mod_name = get_module_name(File_path,Filetype), 
     Mod_name_atom = list_to_atom(Mod_name),
- %% case  "erl" =Filetype of 
- %%     true ->	 
- %% 	 c:cd("../loaded"),
- %% 	 c(Mod_name_atom),
- %% 	 l(Mod_name_atom),
- %% 	 c:cd("../src");
- %%     false -> ok
- %% end,
-    code:load_file(Mod_name_atom),
-    io:format("~p~n",[Mod_name_atom]),
+       load_file(Mod_name_atom),
     Mod_info = get_module_info(Mod_name),
-    io:format("~p~n",[Mod_info]),    
+    Exported = proplists:get_value(exported, Mod_info),
     Mod_md5 = get_md5(File_path),
-    %% Specs = get_specs(Mod_name,Mod_info),
-						% io:format("~p~n",[Mod_md5]),
-    Record = #file_poller_record{module_name = Mod_name,filetype = Filetype,module_info = Mod_info,module_md5 = Mod_md5}, %%specs = Specs,
-    Record .
+    Specs_List = keep_Specs:fetch(),
+    Record = #file_poller_record{module_name = Mod_name,filetype = Filetype,module_info =Exported,module_md5 =Mod_md5}, 
+    Record.
 
+load_file(Mod_name_atom)->
+    code:load_file(Mod_name_atom).
 
 get_files(Directory,Filetype) ->
     Path_modified_for_files = filename:join(Directory,"*."++Filetype),
     Files_in_directory = filelib:wildcard(Path_modified_for_files).
 
-get_module_names(File,Filetype)->
+get_module_name(File,Filetype)->
     filename:basename(File,"."++Filetype).
 						%    [ filename:basename(File,"."++Filetype) || File <- Files ].
 
@@ -130,9 +107,9 @@ get_md5(Filepath)->
 %%   io:format("~p",Erl_files),
 %%     Beam_files = get_files("/home/ekousha/Documents/Erlang_Projs/loaded","beam"),
 %%     io:format("~p",Beam_files),
-%%     Erl_module_names = get_module_names(Erl_files,erl),
+%%     Erl_module_names = get_module_name(Erl_files,erl),
 %%     io:format("~p",Erl_module_names),
-%%     Beam_module_names = get_module_names(Beam_files,beam),
+%%     Beam_module_names = get_module_name(Beam_files,beam),
 %%     io:format("~p",Beam_module_names),
 %%     Erl_module_info = get_module_info(Erl_module_names),
 %%     io:format("~p",Erl_module_info),
