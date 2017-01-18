@@ -12,22 +12,20 @@
 		      {attributes,_},
 		      {compile,_}]]).
 
--define(Record_expected,[[[{file_poller_record,"ets_table1","erl",_,_},
-			   {file_poller_record,"ets_table1_tests","erl",_,_}],
-			  {file_poller_record,"ets_table1","beam",_,_},
-			  {file_poller_record,"ets_table1_tests","beam",_,_}]]).
 
-file_handler_tests_() ->
+file_handler_test_() ->
     {foreach,
      fun setup/0,
      fun cleanup/0,
-     [fun check_files_in_directory_test/0,
-     
-      fun check_record/0]
-    %%      fun check_module_names_test/0,
-%%  fun check_module_info_test/0,
-%% fun check_record_when_a_file_is_added_test/0,
-   %%   fun check_record_when_a_file_is_deleted_test/0]
+     [fun check_files_in_directory/0,
+      fun spawn_file_handler_process/0,
+      fun check_record/0,
+      fun admin_msg_restrict/0,
+      fun admin_msg_unrestrict/0]
+     %%      fun check_module_names_test/0,
+     %%  fun check_module_info_test/0,
+     %% fun check_record_when_a_file_is_added_test/0,
+     %%   fun check_record_when_a_file_is_deleted_test/0]
     }.
 
 
@@ -36,6 +34,37 @@ setup() ->
 
 cleanup() ->
     ok.
+
+spawn_file_handler_process()->
+    file_handler:start(),
+    Pid= whereis(file_handler),
+    io:format("~p~n",[Pid]),    
+    ?assertMatch(true,is_pid(Pid)).
+
+admin_msg_restrict()->
+    Expect = {ok,restricted},
+    Ref = make_ref(),
+    file_handler ! {self(), Ref, restrict,lists,{seq,2}},
+    Got = receive 
+		 {Ref,Result}->
+		     Result
+	     after 5000->
+		     {error,timeout}
+	     end,
+    ?assertMatch(Expect,Got).
+	
+admin_msg_unrestrict()->
+    Expect = {ok,unrestricted},
+    Ref = make_ref(),
+    file_handler ! {self(), Ref, restrict,lists,{seq,2}},
+    Got    = receive  
+		 {Ref,Result}->
+		     Result
+	     after 5000->
+		     {error,tdimeout}
+	     end,
+    ?assertMatch(Expect,Got).
+
 
 
 movein_a_file_to_loaded()->
@@ -47,7 +76,7 @@ remove_a_file_from_loaded()->
     os:cmd("mv ~/codeserver/apps/codeserver/loaded/flyingfile.erl ~/codeserver/apps/codeserver/loadedtmp").
 
 
-check_files_in_directory_test() ->
+check_files_in_directory() ->
     Input1 = "/home/ekousha/codeserver/apps/codeserver/loaded",
     Input2 = "erl",
     Result = file_handler:get_files(Input1,Input2),

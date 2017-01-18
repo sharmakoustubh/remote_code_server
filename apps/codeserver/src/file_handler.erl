@@ -1,43 +1,52 @@
 -module(file_handler).
--export([file_handler_main_function/3,create_record/2,get_files/2,get_module_name/2,get_module_info/1,get_md5/1]).
--record(file_poller_record, {module_name,
+-export([start/0,loop/3,create_record/2,get_files/2,get_module_name/2,get_module_info/1,get_md5/1]).
+-record(module, {module_name,
 			     filetype,
 			     specs,
  			     module_info,
  			     module_md5 }).
 
-file_handler_main_function(Records_list,Old_erl_files,Old_beam_files)->
-    Erl_files = get_files("/home/ekousha/codeserver/apps/codeserver/loaded","erl"),
-    io:format("~p~n",[Erl_files]),
-    Beam_files = get_files("/home/ekousha/codeserver/apps/codeserver/loaded","beam"),
-    io:format("~p~n",[Beam_files]),
-    Joint_erl_beam_list =lists:append(Erl_files,Beam_files),
-    io:format("~p~n",[Joint_erl_beam_list]),
-    New_Rec_list1 =  createRecordForNewFiles( Old_erl_files,"erl",Erl_files,Records_list),
-    New_Rec_list2 =   createRecordForNewFiles(Old_beam_files,"beam",Beam_files,New_Rec_list1),
-    io:format("~p~n",[New_Rec_list2]),
-    New_Rec_list2.
 
-createMemoryFunction([H|New_Files],Old_Files)->
-    case  lists:member(H,Old_Files) of
-	false ->
-	    Old_Files_appended = lists:append(H,Old_Files),
-	    createMemoryFunction(New_Files,Old_Files_appended);
-	
-	_-> createMemoryFunction(New_Files,Old_Files)
-    end;
-createMemoryFunction([],Old_Files) ->
-    Old_Files.
+start()->
+    Ref = make_ref(),
+    Parent = self(),
+    io:format("Starting file handler main function"),
+    spawn(fun() ->		  
+		  register(?MODULE,self()),
+		  Parent ! {Ref, started},
+		  loop([],[],[])
+	  end),
+    receive
+	{Ref, started} ->
+	    ok
+    after 1000 ->
+	    {error, "Couldn't start main"}
+    end.
 
 
-createRecordForNewFiles(File_list,FileType,[H|New_file],Acc)->
-    case  lists:member(H,File_list) of
+loop(Records_list,Old_erl_files,Old_beam_files)->
+    %%  New_Restrict_List = admin_msg(Restrict_list),
+    New_erl_files = get_files("/home/ekousha/codeserver/apps/codeserver/loaded","erl"),
+    io:format("~p~n",[New_erl_files]),
+    New_beam_files = get_files("/home/ekousha/codeserver/apps/codeserver/loaded","beam"),
+    io:format("~p~n",[New_beam_files]),
+    Updated = update(Old_erl_files,Old_beam_files, New_erl_files, New_beam_files,Records_list),
+    Updated_rec_with_restricts = admin_msg(Updated),
+   
+    loop(Updated_rec_with_restricts, New_erl_files, New_beam_files).
+
+update(Old_erl_files,Old_beam_files, New_erl_files, New_beam_files,Records_list) ->
+    With_erl = createRecordForNewFiles(Old_erl_files, "erl", New_erl_files,Records_list),
+    createRecordForNewFiles(Old_beam_files, "beam", New_beam_files, With_erl).
+
+createRecordForNewFiles(Old_erlbeam_files,FileType,[H|New_file],Acc)->
+    case  lists:member(H,Old_erlbeam_files) of
 	false ->
 	    New_Rec =  create_record(H,FileType),
 	    New_Acc = [New_Rec|Acc],
-	    createRecordForNewFiles(File_list,FileType,New_file,New_Acc);
+	    createRecordForNewFiles(Old_erlbeam_files,FileType,New_file,New_Acc);
 	
-	true ->  createRecordForNewFiles(File_list,FileType,New_file,Acc)
+	true ->  createRecordForNewFiles(Old_erlbeam_files,FileType,New_file,Acc)
 		     
     end;
 
@@ -47,13 +56,87 @@ createRecordForNewFiles(File_list,FileType,[],Acc)->
 create_record(File_path,Filetype) ->
     Mod_name = get_module_name(File_path,Filetype), 
     Mod_name_atom = list_to_atom(Mod_name),
-       load_file(Mod_name_atom),
+    load_file(Mod_name_atom),
     Mod_info = get_module_info(Mod_name),
     Exported = proplists:get_value(exported, Mod_info),
     Mod_md5 = get_md5(File_path),
-    Specs_List = keep_Specs:fetch(),
-    Record = #file_poller_record{module_name = Mod_name,filetype = Filetype,module_info =Exported,module_md5 =Mod_md5}, 
-    Record.
+    put_in_record(Mod_name,Filetype,Exported,Mod_md5).
+
+put_in_record(Mod_name,Filetype,Exported,Mod_md5)->
+    Rec = #module{module_name = Mod_name,filetype = Filetype,module_info =Exported,module_md5 =Mod_md5},
+    {Mod_name,Rec}. 
+
+
+    
+admin_msg(Updated)->
+    receive 
+	{From, Ref, restrict,Module,Function} ->
+	    From ! {Ref, {ok,restricted}},
+	    lists:member(Module,Updated);
+	 %%   Updated#module.specs = {restricted,{Module,Function}};	
+	{From,Ref,unrestrict,Module, Function} ->
+%%	    Updated#module
+	    delete_from_list(From,Ref,Module, Function,[])	
+    after 500 -> 
+	    Updated
+		
+    end.
+
+
+restrict(Module, Function) ->
+    Ref = make_ref(),
+    ?MODULE ! {self(), Ref, add, Module, Function},
+    receive 
+	{Ref, Res} ->
+	    Res
+    after 500 ->
+	    {error, timeout}
+    end.
+
+delete(Module, Function) ->
+    Ref = make_ref(),
+    ?MODULE ! {self(), Ref, delete, Module, Function},
+    receive 
+	{Ref, Res} ->
+	    Res
+    after 500 ->
+	    {error, timeout}
+    end.
+
+delete_from_list(From,Ref,Module,Function,Old_List)->
+    case lists:member({Module,Function},Old_List) of
+	true ->
+	    From ! {Ref,{ok,deleted}},
+	    lists:delete({Module,Function},Old_List);
+	false ->
+	    From ! {Ref,{error,not_found}},
+	    Old_List
+    end.
+
+do_fetch(From,Ref,Old_List)->
+    From !{Ref,{ok,Old_List}}.
+
+
+fetch() ->
+    Ref = make_ref(),
+    ?MODULE ! {self(),Ref,fetch},
+    receive 
+	{Ref, Res} ->
+	    Res
+    after 500 ->
+	    {error, timeout}
+    end.
+
+terminate_process()->
+    Ref=make_ref(),
+    ?MODULE ! {self(),Ref,terminate},
+    receive 
+	{Ref,terminated}->
+	    timer:sleep(100),
+	    ok
+    after 500 ->
+	    {error,timeout}
+    end.
 
 load_file(Mod_name_atom)->
     code:load_file(Mod_name_atom).
@@ -92,6 +175,18 @@ get_md5(Filepath)->
     
 
 
+createMemoryFunction([H|New_Files],Old_Files)->
+    case  lists:member(H,Old_Files) of
+	false ->
+	    Old_Files_appended = lists:append(H,Old_Files),
+	    createMemoryFunction(New_Files,Old_Files_appended);
+	
+	_-> createMemoryFunction(New_Files,Old_Files)
+    end;
+createMemoryFunction([],Old_Files) ->
+    Old_Files.
+
+
 
 
 
@@ -118,7 +213,7 @@ get_md5(Filepath)->
 %% [create_record(X)|| X <- Erl_files ]
 
 %%  create_record(H|T,Acc)->
-%%      Acc_h =   #file_poller_record{directory_erl = H},
+%%      Acc_h =   #module{directory_erl = H},
 %%      create_record(T,Acc_h|Acc).
 
 %%  create_record([],Acc)->
@@ -141,12 +236,12 @@ get_md5(Filepath)->
 %% Input_to_moduleinfo = list_to_atom(Files_pFiles_in_directorym
 						%resent_in_dir),
 %% Mod_info = module_info(Input_to_moduleinfo),
-%% #file_poller_record{directory = Directory,
+%% #module{directory = Directory,
 %% 			files=Input_to_moduleinfo,
 %% 			details=[Mod_info]}.
 
 
-%% #file_poller_record{directory_erl = Erl_files ,directory_beam = Beam_files ,module_names_erl = Erl_module_names, module_names_beam = Beam_module_names,details_erl = Erl_module_info, details_beam = Beam_module_info}.
+%% #module{directory_erl = Erl_files ,directory_beam = Beam_files ,module_names_erl = Erl_module_names, module_names_beam = Beam_module_names,details_erl = Erl_module_info, details_beam = Beam_module_info}.
 
 
 
