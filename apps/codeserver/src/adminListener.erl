@@ -12,6 +12,11 @@ server(LSock) ->
     spawn(fun()-> do_recv(Sock) end),
     server(LSock).
 
+
+
+%% restrict module function 2
+
+
 do_recv(Sock) ->
     case gen_tcp:recv(Sock, 0) of
         {From_Sock, restrict,ModuleName_bin, FunctionName_bin} ->

@@ -4,16 +4,16 @@
 	 create_record/3,
 	 get_files/2,
 	 get_module_name/2,
-	 get_module_info/1,
 	 get_md5/1,
 	 createRecordForNewFiles/4,
-	 load_file_in_dir/1,
-	 add_dir_to_path/1]).
--record(module, {filetype,
-		 restricted = [],
-		 exported,
-		 module_md5 }).
+	 load_file_from_dir/2,
+	 restrict/3,
+	 unrestrict/3,
+	 add_dir_to_path/1,
+	 fetch/0,
+	 list_md5/1]).
 
+-include("record_definition.hrl").
 
 start()->
     Ref = make_ref(),
@@ -22,6 +22,7 @@ start()->
     spawn(fun() ->		  
 		  register(?MODULE,self()),
 		  Parent ! {ok, Ref},
+		  add_dir_to_path("/home/ekousha/codeserver/apps/codeserver/loaded/"),
 		  loop([],[],[])
 		  
 	  end),
@@ -34,104 +35,156 @@ start()->
 
 
 loop(Records_list,Old_erl_files,Old_beam_files)->
-  
     New_erl_files_path = get_files("/home/ekousha/codeserver/apps/codeserver/loaded","erl"),
     New_beam_files_path = get_files("/home/ekousha/codeserver/apps/codeserver/loaded","beam"),
+
+
+    
+
+
     Updated = update(Old_erl_files,Old_beam_files, New_erl_files_path, New_beam_files_path,Records_list),
-    io:format("~p~n",["enter admin_msg"]),
     Updated_rec_with_restricts = admin_msg(Updated),
     loop(Updated_rec_with_restricts, New_erl_files_path, New_beam_files_path).
  
 update(Old_erl_files, Old_beam_files, New_erl_files_path, New_beam_files_path,Records_list) ->
     With_erl = createRecordForNewFiles(Old_erl_files, "erl", New_erl_files_path,Records_list),
+    
     createRecordForNewFiles(Old_beam_files, "beam", New_beam_files_path, With_erl).
 
+update_if_new(Records_list,Filetype,Mod_name,Mod_md5)->
+    Record = proplists:get_val(Mod_name,Records_list),
+    
+    File_kind = case Record of 
+		    undefined ->
+			new_file;
+		    _->
+			old_file
+		end,
+	case File_kind of
+	  new_file->
+		new;
+	    old_file ->
+		Md5_record_list = Record#module.module_md5;
+	    _->
+		error
+	end,
+    Old_md5 =  Record#module.module_md5,
+	case Mod_md5 of 
+	    Old_md5 ->
+		same_as_old;
+	    
+	    _ ->
+		update
+	end.
+
+
+
+
+createRecordForNewFiles( _,_,[],Old_keyval)->
+    Old_keyval;
 
 createRecordForNewFiles(Old_erlbeam_files, Filetype, [H|T], Old_keyval)->
-    case lists:member(H,Old_erlbeam_files) of
-	false ->
-	    Mod_name = get_module_name(H, Filetype),
-	    Mod_md5 = get_md5(H),
-	    add_dir_to_path("/home/ekousha/codeserver/apps/codeserver/loaded/"),
-	    load_file_in_dir(Mod_name),
-	    New_Rec = create_record(Mod_name, Filetype, Mod_md5),
-	    New_keyval = [{Mod_name, New_Rec}],
-	    Old_keyval_updated = lists:append(New_keyval,Old_keyval),
-	    createRecordForNewFiles(Old_erlbeam_files, Filetype, T, Old_keyval_updated);
-	true ->
-	    createRecordForNewFiles(Old_erlbeam_files, Filetype, T,Old_keyval)
-    end;
-createRecordForNewFiles( _,_,[],Old_keyval)->
-    Old_keyval.
+    Mod_name = get_module_name(H, Filetype),
+    %% io:format(user,"file before md5 -------->>>~p~n",[H]),
+    Mod_md5 = get_md5(H),
+    Mod_name_atom = list_to_atom(Mod_name),
+    Response_update_if_new = update_if_new(Old_keyval,Filetype,Mod_name,Mod_md5),
+    case Response_update_if_new of
+    	ok -> 
+    	    createRecordForNewFiles(Old_erlbeam_files, Filetype, T,Old_keyval);
+    	update->
+	    
+	    case Filetype of
+		"erl"->
+		    load_file_from_dir(Mod_name_atom,H),
+		    New_Rec = create_record(Mod_name, Filetype, Mod_md5),
+		    New_keyval = [{Mod_name, New_Rec}],
+		    Old_keyval_updated = lists:append(New_keyval,Old_keyval),
+		    createRecordForNewFiles(Old_erlbeam_files, Filetype, T,Old_keyval_updated);
+		"beam"->
+		    Old_keys = proplists:get_keys(Old_keyval),
+		    case lists:member(Mod_name,Old_keys) of
+			true->
+			    createRecordForNewFiles(Old_erlbeam_files, Filetype, T,Old_keyval);
+			false->
+			    code:load_file(Mod_name_atom),
+			    New_Rec = create_record(Mod_name, Filetype, Mod_md5),
+			    New_keyval = [{Mod_name, New_Rec}],
+			    Old_keyval_updated = lists:append(New_keyval,Old_keyval),
+			    createRecordForNewFiles(Old_erlbeam_files, Filetype, T,Old_keyval_updated)
+		    end
+			
+			
+	    end
+		
+    end.
 
 add_dir_to_path(Dir)->
     code:add_path(Dir).
 
-load_file_in_dir(Mod_name)->
-    Mod_name_atom = list_to_atom(Mod_name),
-    %%io:format("~p~n",[Mod_name_atom]),
-    %% ok = case code:purge(Mod_name_atom) of
-    %% 	     true ->
-    %% 		 ok;
-    %% 	     _ ->
-    %% 		 {error,not_purrged}
-    %% 	 end,
-    %% code:purge(Mod_name_atom),
-    %% ok = case code:delete(Mod_name_atom) of
-    %% 	     true ->
-    %% 		 ok;
-    %% 	     _ ->
-    %% 		 {error,not_delleted}
-    %% 	 end,
+load_file_from_dir(Mod_name_atom,Path)->
+    code:delete(Mod_name_atom),    
     code:purge(Mod_name_atom),
-    code:delete(Mod_name_atom),
-    case compile:file(Mod_name_atom) of
-	{ok,_}->
-	    ok;
-	Error ->
-	    Error
-    end,
+    compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]),
     code:load_file(Mod_name_atom).
 
 
-create_record(Mod_name, Filetype, Mod_md5) ->   
-    Mod_info = get_module_info(Mod_name),
+create_record(Mod_name, Filetype, Mod_md5) -> 
+    Mod_name_atom = list_to_atom(Mod_name),
+    %io:format(user, "Getting module info~n", []),
+    Mod_info = Mod_name_atom:module_info(),
+    %io:format(user, "Getting exported from module info~n", []),
     Exported = proplists:get_value(exports, Mod_info),
-    #module{filetype = Filetype,
-	    exported =Exported,
-	    module_md5 =Mod_md5}. 
+    Result = #module{filetype = Filetype,
+		     exported =Exported,
+		     module_md5 =Mod_md5},
+    %io:format(user, "Returning this: ~p~n", [Result]),
+    Result.
 
 admin_msg(Updated)->
     receive 
 	{From, Ref, restrict, Module, Function} ->
 	    io:format("~p~n",["You have come to restricting file-------)))"]),
-	    restrict(From, Ref,Module, Function, Updated);
+	    Result = restrict(Module, Function, Updated),
+	    From!{Ref, ok},
+	    Result;
 	{From,Ref,unrestrict,Module, Function} ->
-	    unrestrict(From, Ref,Module, Function, Updated);
+	    Res = unrestrict(Module, Function, Updated),
+	    From ! {Ref, ok},
+	    Res;
 	{From,Ref,delete_module,Module} ->
-	    delete_module(From, Ref, Module, Updated)	
-    after 500 -> 
+	    delete_module(From, Ref, Module, Updated);
+	{From,Ref,fetch} ->
+	   From ! {Ref, Updated},
+	    Updated	    
+    after 0 -> 
 	    Updated
     end.
 
-restrict(From, Ref, Module, Function,Updated)->
-    Rec_of_Module = proplists:get_value(Module,Updated),
-    Specs = Rec_of_Module#module.restricted,
-    Updated_Specs = [Function | Specs],
-    From ! {Ref, {ok, restricted}},
-    Rec_of_Module_restricts = Rec_of_Module#module{restricted = Updated_Specs},
-    Keyval = [{Module, Rec_of_Module_restricts}],
-    lists:append(Keyval,Updated).
+fetch()->
+    Ref = make_ref(),
+    ?MODULE ! {self(), Ref, fetch},
+    receive
+	{Ref, List} ->
+	    {ok,List}
+    after 500 ->
+	    {error, no_response}
+    end.
+
+restrict(Module, Function,Modules)->
+    Rec = proplists:get_value(Module, Modules),
+    Old_restricted = Rec#module.restricted,
+    Restricted = [Function | Old_restricted],
+    Updated = {Module, Rec#module{restricted = Restricted}},
+    lists:keyreplace(Module, 1, Modules, Updated).
 
 
-unrestrict(From, Ref, Module, Function,Updated)->
-    Rec_of_Module = proplists:get_value(Module,Updated),
-    Specs = Rec_of_Module#module.restricted,
-    Updated_Specs = lists:subtract(Specs,[Function]),
-    From ! {Ref, {ok, unrestricted}},
-    Rec_of_Module_restricts = Rec_of_Module#module{restricted = Updated_Specs},
-    Keyval = {Module, Rec_of_Module_restricts},
-    lists:keyreplace(Module,1, Updated, Keyval).
+unrestrict(Module, Function, Modules) ->
+    Rec = proplists:get_value(Module, Modules),
+    Old_restricted = Rec#module.restricted,
+    Restricted = Old_restricted -- [Function],
+    Updated = {Module, Rec#module{restricted = Restricted}},
+    lists:keyreplace(Module, 1, Modules, Updated).
 
 delete_module(From, Ref, Module,Updated)->
     From ! {Ref, {ok, deleted_module}},    
@@ -145,12 +198,11 @@ get_files(Directory,Filetype) ->
 get_module_name(File,Filetype)->
     filename:basename(File,"."++Filetype).
 
-
-get_module_info(One_file)->
-    Module = list_to_atom(One_file), 
-    Module:module_info().
-    % Md5_bin = Mod_name_atom:module_info(md5),
-
+list_md5(Files)->
+    List_md5 = [get_md5(File)||File<-Files],
+    io:format(user,"md5 in a list format of files in dir    ~p~n",[List_md5]),
+    List_md5.
+		      
 get_md5(Filepath)->
     {ok,Bin} =file:read_file(Filepath),
     Md5_bin = crypto:hash(md5,Bin),

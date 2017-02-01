@@ -1,33 +1,22 @@
 -module(file_handler_tests).
 -include_lib("eunit/include/eunit.hrl").
--define(Module_info,[[{exports,[{start,0},{module_info,0},{module_info,1}]},
-		      {imports,[_]},
-		      {attributes,[_]},
-		      {compile,[_]}],
-		     [{exports,[{ets_table1_test_,0},
-				{test,0},
-				{module_info,0},
-				{module_info,1}]},
-		      {imports,_},
-		      {attributes,_},
-		      {compile,_}]]).
-
+-include("record_definition.hrl").
 
 file_handler_test_() ->
     {foreach,
      fun setup/0,
      fun cleanup/1,
-     [{"check the right files are there in dir",fun check_files_in_directory/0},
+     [{"check  files are there in dir",fun check_files_in_directory/0},
       {"check file handler process starts",fun spawn_file_handler_process/0},   
-     % {"check the record is being created", fun create_record/0},
       {"check admin can put Module Function in restricted field of record", fun admin_msg_restrict/0},
       {"check admin can delete Module Function from restricted field of record",fun admin_msg_unrestrict/0},
       {"check if module name is in string format",fun check_module_name/0},
-      {"check load file are loaded in dir",fun load_file_in_dir/0},
+      {"check files are loaded in dir loaded",fun load_file_from_dir/0},
       {"check if module is deleted when admin asks for it",fun admin_msg_delete_module/0},
       {"check directory loaded is added to the path",fun add_dir_to_path/0},
-{"check you get correct md5 ",fun get_md5/0}
-]}.
+      {"check you get correct md5 ",fun get_md5/0}
+      
+     ]}.
 
 
 setup() ->
@@ -52,31 +41,16 @@ spawn_file_handler_process()->
     ?assertMatch(true,is_pid(Pid)).
 
 admin_msg_restrict()->
-    Expected = {ok,restricted},
-    Ref = make_ref(),
-    file_handler ! {self(), Ref, restrict,"ets_table1",{start,0}},
-    Got = receive 
-	      {Ref,Result}->
-		  Result
-	  after 5000->
-		  {error,timeout}
-	  end,
-    ?assertMatch(Expected,Got).
+    Module = {"my_moduleRes", #module{restricted = []}},
+    Result = file_handler:restrict("my_moduleRes", {fRes, 0}, [Module]),
+    Expected = [{"my_moduleRes",#module{restricted = [{fRes, 0}]}}],
+    ?assertEqual(Expected, Result).
 
 admin_msg_unrestrict()->
-    Expected = {ok,unrestricted},
-    Ref1 = make_ref(),
-    Ref2 = make_ref(),
-    file_handler ! {self(), Ref1, restrict,"ets_table1",{start,0}},
-    timer:sleep(500),
-    file_handler ! {self(), Ref2,unrestrict,"ets_table1",{start,0}},
-    Got    = receive  
-		 {Ref2,Result}->
-		     Result
-	     after 5000->
-		     {error,timeout}
-	     end,
-    ?assertMatch(Expected,Got).
+    Module = {"my_module", #module{restricted = [{f, 0}]}},
+    Result = file_handler:unrestrict("my_module", {f, 0}, [Module]),
+    Expected = [{"my_module",#module{restricted = []}}],
+    ?assertEqual(Expected, Result).
 
 admin_msg_delete_module()->
     Expected = {ok,deleted_module},
@@ -98,14 +72,14 @@ check_files_in_directory() ->
     Expected = ["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],
     ?assertEqual(Expected, Result).
 
-load_file_in_dir()-> 
+load_file_from_dir()-> 
     Expected = {module,ets_table1},
-    Result =file_handler:load_file_in_dir("ets_table1"),
+    Result =file_handler:load_file_from_dir(ets_table1,"/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"),
     ?assertEqual(Expected, Result).
 
 check_module_name()->
     Input1 = "/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl",
-    Input2 = erl,
+    Input2 = "erl",
     Result = file_handler:get_module_name(Input1,Input2),
     Expected = "ets_table1",
     ?assertEqual(Expected, Result).
@@ -117,7 +91,7 @@ add_dir_to_path()->
 
 
 get_md5()->
-    Expected = "B0EE12C0E644D8AE78A7E6E5C197900D",
+    Expected = "2FEFF17C44894ADFB17326621C8ACA8A",
     Got =  file_handler:get_md5("/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"),
     ?assertMatch(Expected,Got).
 
@@ -136,10 +110,11 @@ copy_files()->
 
 delete_files(_)->
     os:cmd("rm ~/codeserver/apps/codeserver/loaded/flyingfile.erl"),
+    os:cmd("rm ~/codeserver/apps/codeserver/loaded/flyingfile.beam"),
     os:cmd("rm ~/codeserver/apps/codeserver/loaded/movingbeam.beam").
 
 check_a_src_file_is_loaded()->
-    file_handler:load_file_in_dir("flyingfile"),
+    file_handler:load_file_from_dir(flyingfile,"/home/ekousha/codeserver/apps/codeserver/loaded/flyingfile.erl"),
     Result = case catch flyingfile:module_info() of
 		 {'EXIT',_}->
 		     not_loaded;
@@ -149,7 +124,7 @@ check_a_src_file_is_loaded()->
     ?assertEqual(ok,Result).
 
 check_a_beam_file_is_loaded()->
-    file_handler:load_file_in_dir("movingbeam"),
+    file_handler:load_file_from_dir(movingbeam,"/home/ekousha/codeserver/apps/codeserver/loaded/movingbeam.beam"),
     Result = case catch movingbeam:module_info() of
 		 {'EXIT',_}->
 		     not_loaded;
@@ -157,15 +132,111 @@ check_a_beam_file_is_loaded()->
 		     ok
 	     end,
     ?assertEqual(ok,Result).
+ 
+fetch_and_amendfile_test_() ->
+    {setup,
+     fun setup2/0,
+     fun cleanup2/1,
+     [{"amend the file and check if the record is changed",fun check_amended_file_is_changed_in_rec/0},
+      {"check fetch gives required output",fun check_fetch/0},
+      {"get the md5 in list for all the files present in dir",fun list_md5/0}]
+    }.
 
-change_the_file_content()->
-    file_handler:load_file_in_dir("flyingfile"),
-    Md5_1 = file_handler:get_md5(),
-    Result = case catch flyingfile:module_info() of
-		 {'EXIT',_}->
-		     not_loaded;
-		 _ ->
-		     ok
-	     end,
-    ?assertEqual(ok,Result).
+
+
+setup2() ->
+    setup(),
+    Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
+    os:cmd("cp /home/ekousha/codeserver/apps/codeserver/test/amend_file.erl " ++ Target),
+    ?assertEqual(true, filelib:is_file(Target)).
+    
+
+cleanup2(Args) ->
+    cleanup(Args),
+    file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"),
+    file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.beam").
+
+
+	     
+check_amended_file_is_changed_in_rec()->
+    timer:sleep(500),
+   
+    {ok,Res1} = file_handler:fetch(),
+    io:format(user,"Records in the dir are++++: ~p~n", [Res1]),
+    Mod_rec1 = proplists:get_value("amend_file",Res1),
+    io:format(user,"record for the amend file : ~p~n", [Mod_rec1]),
+    R1_exported = Mod_rec1#module.exported,
+    timer:sleep(100),
+    file:write_file("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",<<"-export([new_fun/0]).">>,[append]),
+    file:write_file("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",<<"new_fun()->ok.">>,[append]),
+    timer:sleep(1000),
+   {ok,Res2} = file_handler:fetch(),
+    Mod_rec2 = proplists:get_value("amend_file",Res2),
+    R2_exported = Mod_rec2#module.exported,
+    ?assertMatch([{my_fun_in_amend,0},{module_info,0},{module_info,1}],R1_exported),
+    ?assertMatch([{new_fun,0}],R2_exported).      
+    
+check_fetch()->   
+    timer:sleep(500),
+    {ok,Result} = file_handler:fetch(),
+    io:format(user,"Records in the dir are yeh check fetch hai : ~p~n", [Result]),
+    Mod_rec1 = proplists:get_value("amend_file",Result),
+   
+    R1_exported = Mod_rec1#module.exported,
+   
+    io:format(user,"Mod rec1 in 2 ffeettcchhs: ~p~n", [R1_exported]),
+    %% ?assertMatch([{"ets_table1",#module{filetype = _,
+    %% 					restricted = _,
+    %% 					exported = _,
+    %% 					module_md5 = _}},
+    %% 		  {"amend_file",#module{filetype = _,
+    %% 					restricted = _,
+    %% 					exported = _,
+    %% 					module_md5 = _}}],
+    
+    
+    ?assertMatch([{"amend_file",
+                   {module,"erl",[],
+                           [{my_fun_in_amend,0},
+                            {module_info,0},
+                            {module_info,1}],
+		    "25803448269B32F6C2FF222F4BF65839"}},
+                  {"ets_table1",
+                   {module,"erl",[],
+		    [{start,0},{module_info,0},{module_info
+					       ,1}],
+		    "2FEFF17C44894ADFB17326621C8ACA8A"}}],
+		 
+		 Result).
+
+list_md5()->
+    %% Expect = ["2FEFF17C44894ADFB17326621C8ACA8A","25803448269B32F6C2FF222F4BF65839"],
+    Expect =["2FEFF17C44894ADFB17326621C8ACA8A","25803448269b32f6c2ff222f4bf65839"],
+    
+    Got = file_handler:list_md5(["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl","/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"]),
+    
+    ?assertMatch(Expect,Got).
+
+update_if_new()->
+    Expect = [{"ets_table1",
+	       {module,"erl",[],
+		[{start,0},{module_info,0},{module_info
+					   ,1}],
+		"2FEFF17C44894ADFB17326621C8ACA8A"}}],
+    Got = file_handler:update_if_new("/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl",,"erl",),
+    ?assertMatch(Expect.Got).
+
+
+%% fun() ->
+%% 	     setup(),
+%% 	     Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
+%% 	     os:cmd("cp /home/ekousha/codeserver/apps/codeserver/test/amend_file.erl " ++ Target),
+%% 	     ?assertEqual(true, filelib:is_file(Target))
+%%      end,
+%%      fun(Arg) ->
+%% 	     cleanup(Arg),
+%% 	     file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"),
+%% 	     file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.beam")
+%%      end,
+
 
