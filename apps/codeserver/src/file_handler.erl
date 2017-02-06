@@ -54,7 +54,7 @@ loop(Old_erl_files, Records_list,Counter)->
 	    ok
     end, 
     Eligible_beam_files = beam_check(Beam_files,Updated_erl_files,[]),
-    io:format("Eligible beam files~p~n",[Eligible_beam_files]),
+   %% io:format("Eligible beam files~p~n",[Eligible_beam_files]),
     Updated_beam_files = update(Old_erl_files, Eligible_beam_files,Updated_erl_files ),
     case Counter =<3 of
 	true-> 
@@ -91,7 +91,7 @@ beam_check([H|T],Records_list,Acc)->
     end.
 
 add_dir_to_path(Dir)->
-    code:add_path(Dir).
+    code:add_patha(Dir).
 
 get_files() ->
     filelib:wildcard("/home/ekousha/codeserver/apps/codeserver/loaded/*.{erl,beam}").
@@ -106,10 +106,10 @@ createRecordForNewFiles( _,[],Old_keyval)->
 createRecordForNewFiles(Old_erlbeam_files,[H|T], Old_keyval)->
    case  lists:member(H,Old_erlbeam_files) of
        true ->
-	   io:format("File was a member~n"),
+	  %% io:format("File was a member~n"),
 	   createRecordForNewFiles(Old_erlbeam_files,T,Old_keyval);
        false ->
-	   io:format("creating new record for ~p~n",[H]),
+	  %% io:format("creating new record for ~p~n",[H]),
 	   Mod_name = get_module_name(H),
 	   Mod_md5 = get_md5(H),
 	   Mod_name_atom = list_to_atom(Mod_name),
@@ -118,7 +118,7 @@ createRecordForNewFiles(Old_erlbeam_files,[H|T], Old_keyval)->
 	   New_Rec = create_record(Mod_name, Mod_md5,Filetype),
 	   New_keyval = {Mod_name, New_Rec},
 	   Old_keyval_updated = [New_keyval | Old_keyval],
-	   io:format("creating record for the above mentioned new file ~p~n",[Old_keyval_updated]),
+	 %%  io:format("creating record for the above mentioned new file ~p~n",[Old_keyval_updated]),
 	   createRecordForNewFiles(Old_erlbeam_files, T,Old_keyval_updated)
        end.
 
@@ -132,15 +132,18 @@ get_md5(Filepath)->
     erlang:binary_to_list(Md5_hex).
 
 compile_and_load_file_from_dir(Mod_name_atom,Path)->
+    code:purge(Mod_name_atom),
     code:delete(Mod_name_atom),    
     code:purge(Mod_name_atom),
     case filename:extension(Path) of
 	".erl" ->	
-	    compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]);
+	   {ok,_}= compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]);
 	".beam"->
 	    do_nothing
     end,
+    io:format(user,"loading file ~p",[Path]),
     code:load_file(Mod_name_atom).
+    
 
 create_record(Mod_name,Mod_md5, Filetype) -> 
     Mod_name_atom = list_to_atom(Mod_name),
@@ -161,7 +164,7 @@ update_changed_files(Old_erl_files,[H|T],Old_keyval)->
     Filetype = filename:extension(H),
     case is_changed(Mod_name,Mod_md5,Old_keyval)of
 	false ->
-	    io:format("file is not changed ~n"),
+	  %%%  io:format("file is not changed ~n"),
 	    update_changed_files(Old_erl_files,T,Old_keyval);	
 	true ->
 	    io:format("file is Changed ~n"),

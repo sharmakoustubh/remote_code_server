@@ -3,22 +3,22 @@
 -include("../src/record_definition.hrl").
 -export([check_amended_file_is_changed_in_rec/0]).
 
-%% file_handler_test_() ->
-%%     {foreach,
-%%      fun setup/0,
-%%      fun cleanup/1,
-%%      [
-%%      %% {"check  files are there in dir",fun check_files_in_directory/0},
-%%       %% {"check file handler process starts",fun spawn_file_handler_process/0},   
-%%       %% {"check admin can put Module Function in restricted field of record", fun admin_msg_restrict/0},
-%%       %% {"check admin can delete Module Function from restricted field of record",fun admin_msg_unrestrict/0},
-%%       %% {"check if module name is in string format",fun check_module_name/0},
-%%       %% {"check files are loaded in dir loaded",fun load_file_from_dir/0},
-%%       %% {"check if module is deleted when admin asks for it",fun admin_msg_delete_module/0},
-%%       %% {"check directory loaded is added to the path",fun add_dir_to_path/0},
-%%       %% {"check you get correct md5 ",fun get_md5/0}
+file_handler_test_() ->
+    {foreach,
+     fun setup/0,
+     fun cleanup/1,
+     [
+     {"check  files are there in dir",fun check_files_in_directory/0},
+      {"check file handler process starts",fun spawn_file_handler_process/0},   
+      {"check admin can put Module Function in restricted field of record", fun admin_msg_restrict/0},
+      {"check admin can delete Module Function from restricted field of record",fun admin_msg_unrestrict/0},
+      {"check if module name is in string format",fun check_module_name/0},
+      {"check files are loaded in dir loaded",fun load_file_from_dir/0},
+      {"check if module is deleted when admin asks for it",fun admin_msg_delete_module/0},
+      {"check directory loaded is added to the path",fun add_dir_to_path/0},
+      {"check you get correct md5 ",fun get_md5/0}
       
-%%      ]}.
+     ]}.
 
 
 setup() ->
@@ -71,7 +71,6 @@ admin_msg_delete_module()->
 
 check_files_in_directory() ->
     Result = file_handler:get_files(),
-    %%    Expected = ["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.beam","/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],
     Expected = ["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],
     ?assertEqual(Expected, Result).
 
@@ -102,10 +101,10 @@ loading_test_()->
      fun copy_files/0,
      fun delete_files/1,
      [
-      %% {"check you can load an erl",
-      %%  fun check_a_src_file_is_loaded/0},
-      %% {"check you can load a beam",
-      %%  fun check_a_beam_file_is_loaded/0}]
+       {"check you can load an erl",
+        fun check_a_src_file_is_loaded/0},
+       {"check you can load a beam",
+        fun check_a_beam_file_is_loaded/0}
      ]}.
 
 copy_files()->
@@ -142,8 +141,8 @@ fetch_and_amendfile_test_() ->
      fun setup2/0,
      fun cleanup2/1,
      [
-      {"amend the file and check if the record is changed",fun check_amended_file_is_changed_in_rec/0}
-     %% {"check fetch gives required output",fun check_fetch/0}
+      {"amend the file and check if the record is changed",fun check_amended_file_is_changed_in_rec/0},
+      {"check fetch gives required output",fun check_fetch/0}
      ]}.
 
 
@@ -151,7 +150,7 @@ fetch_and_amendfile_test_() ->
 setup2() ->
     setup(),
     Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
-    os:cmd("cp /home/ekousha/codeserver/apps/codeserver/test/amend_file.erl " ++ Target),
+    os:cmd("cp /home/ekousha/codeserver/apps/codeserver/test/dummies/amend_file.erl " ++ Target),
     ?assertEqual(true, filelib:is_file(Target)).
     
 
@@ -163,22 +162,25 @@ cleanup2(Args) ->
 
 	     
 check_amended_file_is_changed_in_rec()->
-   % setup2(),
     timer:sleep(500),
     {ok,Res1} = file_handler:fetch(),
+    io:format(user,"before adding new fun in amend_file~p~n",[Res1]),
     Mod_rec1 = proplists:get_value("amend_file",Res1),
+
     R1_exported = Mod_rec1#module.exported,
-    file:write_file("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",<<"-export([new_fun/0]).">>,[append]),
-    file:write_file("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",<<"\n new_fun()->ok.">>,[append]),
+    ?assertMatch([{my_fun_in_amend,0},{module_info,0},{module_info,1}],R1_exported),
+    Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
+    os:cmd("cp /home/ekousha/codeserver/apps/codeserver/loadedtmp/amend_file.erl " ++ Target),
+
     timer:sleep(500),
-    {ok,Binary}= file:read_file("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"),
-    io:format(user,"~p~n",[Binary]),
-    ok = amend_file:new_fun(),
+    io:format(user, "which? ~p~n", [code:which(amend_file)]),
     {ok,Res2} = file_handler:fetch(),
+    io:format(user,"after adding new fun in amend_file~p~n",[Res2]),
     Mod_rec2 = proplists:get_value("amend_file",Res2),
     R2_exported = Mod_rec2#module.exported,
-    ?assertMatch([{my_fun_in_amend,0},{module_info,0},{module_info,1}],R1_exported),
-    ?assertMatch([{new_fun,0},{my_fun_in_amend,0},{module_info,0},{module_info,1}],R2_exported).     
+
+    ?assertEqual(lists:sort([{new_fun,0},{my_fun_in_amend,0},{module_info,0},{module_info,1}]),lists:sort(R2_exported)).
+
 
 %%[{my_fun_in_amend,0},{module_info,0},{module_info,1}] 
 
@@ -187,19 +189,18 @@ check_fetch()->
     {ok,Result} = file_handler:fetch(),
     Mod_rec1 = proplists:get_value("amend_file",Result),
     R1_exported = Mod_rec1#module.exported,
-    ?assertMatch([{"amend_file",
-                   {module,"erl",[],
-		    [{my_fun_in_amend,0},
-		     {module_info,0},
-		     {module_info,1}],
-		    "25803448269B32F6C2FF222F4BF65839"}},
+    Expect = [{"amend_file",
+                   {module,".erl",[],
+                           [{my_fun_in_amend,0},
+                            {module_info,0},
+                            {module_info,1}],
+                           "25803448269B32F6C2FF222F4BF65839"}},
                   {"ets_table1",
-                   {module,"erl",[],
-		    [{start,0},{module_info,0},{module_info
-					       ,1}],
-		    "2FEFF17C44894ADFB17326621C8ACA8A"}}],
-		 
-		 Result).
+                   {module,".erl",[],
+                           [{start,0},{module_info,0},{module_info,1}],
+                           "2FEFF17C44894ADFB17326621C8ACA8A"}}],
+
+    ?assertMatch(Expect,Result).
 
 
 
