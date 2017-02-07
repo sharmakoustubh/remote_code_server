@@ -5,7 +5,7 @@
 -include("../src/record_definition.hrl").
 
 adminListener_test_() ->
-    {foreach,
+    {setup,
      fun setup/0,
      fun cleanup/1,
      [
@@ -14,7 +14,9 @@ adminListener_test_() ->
       {"check parsing is done correct",fun check_parse/0},
       {"check execute restrict works",fun execute_restrict_should_return_ok_upon_pass/0},
       {"check execute restrict works",fun execute_unrestrict_should_return_ok_upon_pass/0},
-      {"check execute delete module works",fun execute_delete_module_keyval_should_return_ok_upon_pass/0}
+      {"check execute delete module works",fun execute_delete_module_keyval_should_return_ok_upon_pass/0},
+      {"check port is already in use",fun port_already_in_use /0}
+
      ]}.
 
 
@@ -49,6 +51,13 @@ ensure_exited_adminListener()->
 	    ensure_exited_adminListener()
     end.       
 
+port_already_in_use()->
+    Expect = {error, eaddrinuse},
+    Result = adminListener:start(),
+    ?assertMatch(Expect,Result).
+    
+
+
 start_server()->
     Pid= whereis(adminListener),
     io:format("~p~n",[Pid]),    
@@ -60,7 +69,7 @@ Result = adminListener:check_format("restrict module function 2"),
     ?assertMatch(Expect, Result).
 
 check_parse()->
-    Expect = ["My_mod",{my_fun,2}],
+    Expect = {"My_mod",{my_fun,2}},
     Result = adminListener:parse(["restrict","My_mod","my_fun","2"]),
     ?assertEqual(Expect,Result).
     
@@ -77,6 +86,13 @@ execute_delete_module_keyval_should_return_ok_upon_pass()->
     Result = adminListener:execute_delete(["delete","ets_table1"]), 
     ?assertEqual(ok,Result).
 
+%% execute_list_clients_should_provide_details_of_socks()->
+%%     Sock = <0.43>,
+%%     Result = adminListener:execute_list_clients(Sock), 
+%%     ?assertEqual(ok,Result).
+
+
+ 
 
 
 

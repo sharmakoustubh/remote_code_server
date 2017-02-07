@@ -189,8 +189,8 @@ check_amended_file_is_changed_in_rec()->
 check_fetch()->   
     timer:sleep(500),
     {ok,Result} = file_handler:fetch(),
-    Mod_rec1 = proplists:get_value("amend_file",Result),
-    R1_exported = Mod_rec1#module.exported,
+%%    Mod_rec1 = proplists:get_value("amend_file",Result),
+%%    R1_exported = Mod_rec1#module.exported,
     Expect = [{"amend_file",
                    {module,".erl",[],
                            [{my_fun_in_amend,0},
