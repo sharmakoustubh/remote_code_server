@@ -8,7 +8,7 @@ file_handler_test_() ->
      fun setup/0,
      fun cleanup/1,
      [
-     {"check  files are there in dir",fun check_files_in_directory/0},
+   %%  {"check  files are there in dir",fun check_files_in_directory/0},
       {"check file handler process starts",fun spawn_file_handler_process/0},   
       {"check admin can put Module Function in restricted field of record", fun admin_msg_restrict/0},
       {"check admin can delete Module Function from restricted field of record",fun admin_msg_unrestrict/0},
@@ -41,7 +41,7 @@ ensure_exited() ->
 
 spawn_file_handler_process()->
     Pid= whereis(file_handler),
-    io:format("~p~n",[Pid]),    
+ %%   io:format("~p~n",[Pid]),    
     ?assertMatch(true,is_pid(Pid)).
 
 admin_msg_restrict()->
@@ -57,22 +57,24 @@ admin_msg_unrestrict()->
     ?assertEqual(Expected, Result).
 
 admin_msg_delete_module()->
-    Expected = {ok,deleted_module},
-    Ref = make_ref(),
-
-    file_handler ! {self(), Ref, delete_module,"ets_table1"},
-    Got    = receive  
-		 {Ref,Result}->
-		     Result
-	     after 5000->
-		     {error,timeout}
-	     end,
-    ?assertMatch(Expected,Got).
-
-check_files_in_directory() ->
-    Result = file_handler:get_files(),
-    Expected = ["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],
+    Module = {"my_module", #module{restricted = [{f, 0}]}},
+    Result = file_handler:delete_module_keyval("my_module",[Module]),
+    Expected = [],
     ?assertEqual(Expected, Result).
+	
+    %% 	file_handler ! {self(), Ref, delete_module,"ets_table1"},
+    %% Got    = receive  
+    %% 		 {Ref,Result}->
+    %% 		     Result
+    %% 	     after 5000->
+    %% 		     {error,timeout}
+    %% 	     end,
+    %% ?assertMatch(Expected,Got).
+
+%% check_files_in_directory() ->
+%%     Result = file_handler:get_files(),
+%%     Expected = ["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],
+%%     ?assertMatch(Expected, Result).
 
 load_file_from_dir()-> 
     Expected = {module,ets_table1},
@@ -164,7 +166,7 @@ cleanup2(Args) ->
 check_amended_file_is_changed_in_rec()->
     timer:sleep(500),
     {ok,Res1} = file_handler:fetch(),
-    io:format(user,"before adding new fun in amend_file~p~n",[Res1]),
+   %% io:format(user,"before adding new fun in amend_file~p~n",[Res1]),
     Mod_rec1 = proplists:get_value("amend_file",Res1),
 
     R1_exported = Mod_rec1#module.exported,
@@ -173,9 +175,9 @@ check_amended_file_is_changed_in_rec()->
     os:cmd("cp /home/ekousha/codeserver/apps/codeserver/loadedtmp/amend_file.erl " ++ Target),
 
     timer:sleep(500),
-    io:format(user, "which? ~p~n", [code:which(amend_file)]),
+  %%  io:format(user, "which? ~p~n", [code:which(amend_file)]),
     {ok,Res2} = file_handler:fetch(),
-    io:format(user,"after adding new fun in amend_file~p~n",[Res2]),
+  %%  io:format(user,"after adding new fun in amend_file~p~n",[Res2]),
     Mod_rec2 = proplists:get_value("amend_file",Res2),
     R2_exported = Mod_rec2#module.exported,
 

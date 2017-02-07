@@ -1,17 +1,34 @@
 -module(adminListener).
--export([]).
+-export([start/0,
+	 check_format/1,
+	 parse/1,
+	 execute_restrict/1,
+	 execute_unrestrict/1,
+	 execute_delete/1
+	]).
 
-start_server()->
-    spawn(fun()-> {ok, LSock} = gen_tcp:listen(50556, [binary, {packet, 0}, 
-						       {active, false}]),
-		  server(LSock) end).
+start()->
+    Ref = make_ref(),
+    Parent = self(),
+    io:format("Starting adminListener server"),
+    
+    spawn(fun()-> {ok, LSock} = gen_tcp:listen(50556, [list, {packet, 0},{active, false}]),
+		  Parent ! {ok, Ref},
+		  true = register(?MODULE,self()),
+		  loop(LSock) end),
+    receive
+	{ok,Ref} ->
+	    ok
+    after 1000 ->
+	    {error, "Couldn't start main"}
+    end.
 
-server(LSock) ->
+
+loop(LSock) ->
     
     {ok, Sock} = gen_tcp:accept(LSock),
     spawn(fun()-> do_recv(Sock) end),
-    server(LSock).
-
+    loop(LSock).
 
 
 %% restrict module function 2
@@ -19,34 +36,64 @@ server(LSock) ->
 
 do_recv(Sock) ->
     case gen_tcp:recv(Sock, 0) of
-        {From_Sock, restrict,ModuleName_bin, FunctionName_bin} ->
-	    ModuleName = binary_to_list(ModuleName_bin)--"\n",
-	    FunctionName = binary_to_list(FunctionName_bin)--"\n",
-	    keep_Specs:update_restrict_database(ModuleName,FunctionName);
-	
-        {From_Sock, un_restrict,ModuleName_bin, FunctionName_bin} ->
-	    ModuleName = binary_to_list(ModuleName_bin)--"\n",
-	    FunctionName = binary_to_list(FunctionName_bin)--"\n",
-	    
-	    keep_Specs:update_un_restrict_database(ModuleName,FunctionName)
-	
-	
-	
-	%% {From_Sock, list_clients} ->
-	    
-	%%     ;								  
-	%% {From_Sock,delete,ModuleName_bin} ->
-	    
-	%%     ;
-	%% {From_Sock, exit,Sock} ->
-	    
-	%%     gen_tcp:close(Sock);
-	
-	 end.
-
-specs_list(ModuleName,FunctionName)->
-    keep_Specs:update_database(ModuleName,FunctionName,restrict) .
+	{ok, Data} ->
+	    io:format("Got data: ~p~n", [Data]),
+	    check_process_send(Data),
+	    do_recv(Sock);
+	Error ->
+	    io:format("Error! ~p~n", [Error])
+    end.
 
 
-%% function_specs() ->
-    
+check_process_send(Data)->
+    Formatted_data = check_format(Data),
+    Result =  process(Formatted_data),
+    send(Result).
+
+check_format(Data)->
+    Data_without_nextline = Data -- "\n",
+    string:tokens(Data_without_nextline," ").
+
+process(Data)->
+    case hd(Data) of
+    	"restrict"->
+    	    execute_restrict(Data);
+    	 "unrestrict"->
+            execute_unrestrict(Data);
+    	%% "list_clients"->
+    	%%     execute_list_clients(Data);
+    	 "delete"->
+    	     execute_delete(Data);
+    	%% "exit"->
+    	%%     terminate(Data);
+    	_->
+    	    {error,command_not_executable}
+    end.
+
+send(Result)->
+    ok.
+
+execute_restrict(Data)->
+    [Module,{Function,Arity}] = parse(Data),
+       file_handler:restrict(Module,{Function,Arity}).
+
+execute_unrestrict(Data)->
+    [Module,{Function,Arity}] = parse(Data),
+       file_handler:unrestrict(Module,{Function,Arity}).
+
+execute_delete(Data)->
+    [Module] = parse_delete_module(Data),
+    io:format(user,"execute delete module mod~p~n",[Module]),
+    file_handler:delete_module_keyval(Module).
+   
+
+parse(Data)->
+    [_,Module,Function,Arity] = Data,
+    Function_atom =  list_to_atom(Function),
+    Arity_atom = list_to_integer(Arity),
+    [Module,{Function_atom,Arity_atom}].
+
+parse_delete_module(Data)->
+    [_,Module] = Data,
+    [Module].
+

@@ -17,7 +17,8 @@
 
 start(_StartType, _StartArgs) ->
     codeserver_sup:start_link(),
-    file_handler:scan().
+    file_handler:start(),
+    adminListener:start().
 
 %%--------------------------------------------------------------------
 stop(_State) ->

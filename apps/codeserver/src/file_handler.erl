@@ -7,8 +7,12 @@
 	 get_md5/1,
 	 createRecordForNewFiles/3,
 	 compile_and_load_file_from_dir/2,
+	 restrict/2,
 	 restrict/3,
+	 unrestrict/2,
 	 unrestrict/3,
+	 delete_module_keyval/1,
+	 delete_module_keyval/2,
 	 add_dir_to_path/1,
 	 fetch/0,
 	 update_changed_files/3,
@@ -22,7 +26,7 @@
 start()->
     Ref = make_ref(),
     Parent = self(),
-    io:format("Starting file handler main function"),
+   % io:format("Starting file handler main function"),
     spawn(fun() ->		  
 		  true = register(?MODULE,self()),
 		  Parent ! {ok, Ref},
@@ -47,21 +51,11 @@ loop(Old_erl_files, Records_list,Counter)->
     {Erl_files,Beam_files} = separate_beam_erl_files(New_erl_files_path,[],[]),
 
     Updated_erl_files = update(Old_erl_files, Erl_files, Records_list),
-    case Counter =<3 of
-	true-> 
-	    io:format("Counter: ~p Updated_erl_files~p ----------->~n",[Counter,Updated_erl_files]);
-	false ->
-	    ok
-    end, 
+
     Eligible_beam_files = beam_check(Beam_files,Updated_erl_files,[]),
-   %% io:format("Eligible beam files~p~n",[Eligible_beam_files]),
+
     Updated_beam_files = update(Old_erl_files, Eligible_beam_files,Updated_erl_files ),
-    case Counter =<3 of
-	true-> 
-	    io:format("Counter: ~p Updated_beam_files ~p ----------->~n",[Counter,Updated_beam_files]);
-	false ->
-	    ok
-    end,
+
     Updated_Records_list_with_restricts = admin_msg(Updated_beam_files),
    loop(New_erl_files_path, Updated_Records_list_with_restricts,Counter+1).
 %%    Updated_Records_list_with_restricts.
@@ -137,11 +131,11 @@ compile_and_load_file_from_dir(Mod_name_atom,Path)->
     code:purge(Mod_name_atom),
     case filename:extension(Path) of
 	".erl" ->	
-	   {ok,_}= compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]);
+	   {ok, _}= compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]);
 	".beam"->
 	    do_nothing
     end,
-    io:format(user,"loading file ~p",[Path]),
+  %%  io:format(user,"loading file ~p",[Path]),
     code:load_file(Mod_name_atom).
     
 
@@ -167,14 +161,14 @@ update_changed_files(Old_erl_files,[H|T],Old_keyval)->
 	  %%%  io:format("file is not changed ~n"),
 	    update_changed_files(Old_erl_files,T,Old_keyval);	
 	true ->
-	    io:format("file is Changed ~n"),
+	 %%   io:format("file is Changed ~n"),
 	    compile_and_load_file_from_dir(Mod_name_atom,H),
 	    New_Rec = create_record(Mod_name, Mod_md5,Filetype),
 	    New_keyval = {Mod_name, New_Rec},
 	    Old_keyval_updated = lists:keyreplace(Mod_name,1,Old_keyval,New_keyval),
 	    update_changed_files(Old_erl_files,T,Old_keyval_updated);
 	error ->
-	    io:format("~p~n",["new_file"]),
+	   %% io:format("~p~n",["new_file"]),
 	    update_changed_files(Old_erl_files,T,Old_keyval)
     end.
 
@@ -189,7 +183,7 @@ is_changed(Mod_name,New_md5,Records_list)->
 		New_md5->
 		    false;
 		_ ->
-		    io:format(user,"Changed file is ~p Curr_md5 ~p New_md5 ~p ~n",[Mod_name , Curr_md5, New_md5]),
+		  %%  io:format(user,"Changed file is ~p Curr_md5 ~p New_md5 ~p ~n",[Mod_name , Curr_md5, New_md5]),
 		    true
 	    end 
     end.
@@ -197,7 +191,6 @@ is_changed(Mod_name,New_md5,Records_list)->
 admin_msg(Updated)->
     receive 
 	{From, Ref, restrict, Module, Function} ->
-	    io:format("~p~n",["You have come to restricting file-------)))"]),
 	    Result = restrict(Module, Function, Updated),
 	    From!{Ref, ok},
 	    Result;
@@ -206,7 +199,9 @@ admin_msg(Updated)->
 	    From ! {Ref, ok},
 	    Res;
 	{From,Ref,delete_module,Module} ->
-	    delete_module(From, Ref, Module, Updated);
+	    Res = delete_module_keyval(Module, Updated),
+	    From ! {Ref, ok},
+	    Res;
 	{From,Ref,fetch} ->
 	   From ! {Ref, Updated},
 	    Updated	    
@@ -220,6 +215,34 @@ fetch()->
     receive
 	{Ref, List} ->
 	    {ok,List}
+    after 500 ->
+	    {error, no_response}
+
+    end.
+
+restrict(Module, Function) ->
+    ?MODULE ! {self(), make_ref(), restrict, Module, Function},
+    receive
+	{Ref, ok} ->
+	    ok
+    after 500 ->
+	    {error, no_response}
+    end.
+
+unrestrict(Module, Function) ->
+    ?MODULE ! {self(), make_ref(), unrestrict, Module, Function},
+    receive
+	{Ref, ok} ->
+	    ok
+    after 500 ->
+	    {error, no_response}
+    end.
+
+delete_module_keyval(Module)->
+    ?MODULE ! {self(),make_ref(),delete_module,Module},
+    receive
+	{Ref, ok} ->
+	    ok
     after 500 ->
 	    {error, no_response}
     end.
@@ -239,7 +262,6 @@ unrestrict(Module, Function, Modules) ->
     Updated = {Module, Rec#module{restricted = Restricted}},
     lists:keyreplace(Module, 1, Modules, Updated).
 
-delete_module(From, Ref, Module,Updated)->
-    From ! {Ref, {ok, deleted_module}},    
+delete_module_keyval(Module,Updated)->
     proplists:delete(Module,Updated).
 
