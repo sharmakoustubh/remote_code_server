@@ -13,7 +13,7 @@ adminListener_test_() ->
       {"check the input format is correct",fun check_format/0},   
       {"check parsing is done correct",fun check_parse/0},
       {"check execute restrict works",fun execute_restrict_should_return_ok_upon_pass/0},
-      {"check execute restrict works",fun execute_unrestrict_should_return_ok_upon_pass/0},
+      {"check execute un-restrict works",fun execute_unrestrict_should_return_ok_upon_pass/0},
       {"check execute delete module works",fun execute_delete_module_keyval_should_return_ok_upon_pass/0},
       {"check port is already in use",fun port_already_in_use /0}
 
@@ -65,22 +65,23 @@ start_server()->
 
 check_format()->
     Expect = ["restrict","module", "function","2"], %% mODULE IS IN STRING AND fUNCTION IS IN ATOM,
-Result = adminListener:check_format("restrict module function 2"),
+    Result = adminListener:check_format("restrict module function 2"),
     ?assertMatch(Expect, Result).
+
 
 check_parse()->
     Expect = {"My_mod",{my_fun,2}},
     Result = adminListener:parse(["restrict","My_mod","my_fun","2"]),
     ?assertEqual(Expect,Result).
-    
+
 execute_restrict_should_return_ok_upon_pass()->
     Result = adminListener:execute_restrict(["restrict","ets_table1","start","0"]), 
-    ?assertEqual(ok,Result).
+    ?assertEqual("the module was restricted",Result).
 
 execute_unrestrict_should_return_ok_upon_pass()->
-    ok = adminListener:execute_restrict(["restrict","ets_table1","start","0"]), 
+    "the module was restricted" = adminListener:execute_restrict(["restrict","ets_table1","start","0"]), 
     Result = adminListener:execute_unrestrict(["unrestrict","ets_table1","start","0"]), 
-    ?assertEqual(ok,Result).
+    ?assertEqual("the module was unrestricted",Result).
 
 execute_delete_module_keyval_should_return_ok_upon_pass()->
     Result = adminListener:execute_delete(["delete","ets_table1"]), 

@@ -46,13 +46,13 @@ spawn_file_handler_process()->
 
 admin_msg_restrict()->
     Module = {"my_moduleRes", #module{restricted = []}},
-    Result = file_handler:restrict("my_moduleRes", {fRes, 0}, [Module]),
+    Result = file_handler:restrict(self(),make_ref(),"my_moduleRes", {fRes, 0}, [Module]),
     Expected = [{"my_moduleRes",#module{restricted = [{fRes, 0}]}}],
     ?assertEqual(Expected, Result).
 
 admin_msg_unrestrict()->
     Module = {"my_module", #module{restricted = [{f, 0}]}},
-    Result = file_handler:unrestrict("my_module", {f, 0}, [Module]),
+    Result = file_handler:unrestrict(self(),make_ref(),"my_module", {f, 0}, [Module]),
     Expected = [{"my_module",#module{restricted = []}}],
     ?assertEqual(Expected, Result).
 

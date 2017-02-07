@@ -55,11 +55,13 @@ do_recv(Sock) ->
 check_process_send(Data,Sock)->
     Formatted_data = check_format(Data),
     Result =  process(Formatted_data,Sock),
+  %%  io:format(user,"tcp send data Result~p~n",[Result]),
+    
     send(Sock,Result).
 
 check_format(Data)->
     Data_without_nextline = Data -- "\n",
-    string:tokens(Data_without_nextline," ").
+    Data_list = string:tokens(Data_without_nextline," "). 
 
 process(Data,Sock)->
     case hd(Data) of
@@ -74,26 +76,47 @@ process(Data,Sock)->
 	"exit"->
 	    terminate(Sock);
     	_->
-    	    {error,command_not_executable}
+    	    "This command is not executable; Executable commands are restrict,unrestrict,delete,list_clients,exit"
     end.
 
-send(Sock,Result)->
-    gen_tcp:send(Sock,Result).
 
 execute_restrict(Data)->
     {Module,{Function,Arity}} = parse(Data),
-    file_handler:restrict(Module,{Function,Arity}).
+    case file_handler:restrict(Module,{Function,Arity}) of 
+	{error, no_response}->
+	    "error; no_response";
+	{error,Error}->
+	    Error;
+	{ok,Result}->
+	    Result	    
+    end.
+
 
 execute_unrestrict(Data)->
     {Module,{Function,Arity}} = parse(Data),
-    file_handler:unrestrict(Module,{Function,Arity}).
+    case file_handler:unrestrict(Module,{Function,Arity}) of 
+	{error, no_response}->
+	    "error; no_response";
+	{error,Error}->
+	    Error;
+	{ok,Result}->
+	    Result	    
+    end.
+
 
 execute_delete(Data)->
     Module = parse_delete_module(Data),
-    file_handler:delete_module_keyval(Module).
+    case file_handler:delete_module_keyval(Module) of 
+	ok ->
+	    ok;
+	_->
+	    "Could not delete module; Module does not exist"
+		
+    end.
+
 
 execute_list_clients(Sock)->
-    inet:sockname(Sock).
+   inet:sockname(Sock).
 
 parse(Data)->
     [_,Module,Function,Arity] = Data,
@@ -108,4 +131,7 @@ parse_delete_module(Data)->
 terminate(Sock)->
     gen_tcp:close(Sock).
 
+send(Sock,Result)->
+    Formatted_data = io_lib:format("~p~n",[Result]),
+    gen_tcp:send(Sock, Formatted_data).
 
