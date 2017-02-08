@@ -8,9 +8,8 @@
 	 createRecordForNewFiles/3,
 	 compile_and_load_file_from_dir/2,
 	 restrict/2,
-	 restrict/5,
 	 unrestrict/2,
-	 unrestrict/5,
+	 restrict_unrestrict/6,
 	 delete_module_keyval/1,
 	 delete_module_keyval/2,
 	 add_dir_to_path/1,
@@ -191,9 +190,9 @@ is_changed(Mod_name,New_md5,Records_list)->
 admin_msg(Updated)->
     receive 
 	{From, Ref, restrict, Module, Function} ->
-	    Result = restrict(From,Ref,Module, Function, Updated);
+	    restrict_unrestrict(From,Ref,Module, Function, Updated,restrict);
 	{From,Ref,unrestrict,Module, Function} ->
-	    Res = unrestrict(From,Ref,Module, Function, Updated);
+	    restrict_unrestrict(From,Ref,Module, Function, Updated,unrestrict);
 	{From,Ref,delete_module,Module} ->
 	    Res = delete_module_keyval(Module, Updated),
 	    From ! {Ref, ok},
@@ -219,7 +218,7 @@ fetch()->
 restrict(Module, Function) ->
     ?MODULE ! {self(), make_ref(), restrict, Module, Function},
     receive
-	{Ref, Result} ->
+	{_Ref, Result} ->
 	    Result
     after 500 ->
 	    {error, no_response}
@@ -228,7 +227,7 @@ restrict(Module, Function) ->
 unrestrict(Module, Function) ->
     ?MODULE ! {self(), make_ref(), unrestrict, Module, Function},
     receive
-	{Ref, Result} ->
+	{_Ref, Result} ->
 	    Result
     after 500 ->
 	    {error, no_response}
@@ -237,42 +236,84 @@ unrestrict(Module, Function) ->
 delete_module_keyval(Module)->
     ?MODULE ! {self(),make_ref(),delete_module,Module},
     receive
-	{Ref, Result} ->
+	{_Ref, Result} ->
 	    Result
     after 500 ->
 	    {error, no_response}
     end.
 
-restrict(From,Ref,Module, Function,Modules)->
+%% restrict(From,Ref,Module, Function,Modules)->
+%%     Rec = proplists:get_value(Module, Modules),
+%%     io:format(user,"exported functions in Module~p Rec ~p Exported funs ~p ~n",[Module,Rec,Rec#module.exported]),
+%%     case Rec of
+%% 	undefined->
+%% 	    From!{Ref,{error,"the module does not exist"}},
+%% 	    Modules;
+%% 	_ ->
+%% 	    case lists:member(Function,Rec#module.exported) of 
+%% 		true ->
+%% 		    Old_restricted = Rec#module.restricted,
+%% 		    Restricted = [Function | Old_restricted],
+%% 		    Updated = {Module, Rec#module{restricted = Restricted}},
+%% 		    Old_restricted = Rec#module.restricted,
+%% 		    Restricted = [Function | Old_restricted],
+%% 		    Updated = {Module, Rec#module{restricted = Restricted}},
+
+%% 		    lists:keyreplace(Module, 1, Modules, Updated);
+%% 		false ->
+%% 		    From!{Ref,{error,"the module exists but the function does not exist"}},
+%% 		    Modules    
+%% 	    end
+		
+%%     end.
+
+
+restrict_unrestrict(From,Ref,Module, Function,Modules,Command)->
     Rec = proplists:get_value(Module, Modules),
+   %% io:format(user,"exported functions in Module~p Rec ~p Exported funs ~p ~n",[Module,Rec,Rec#module.exported]),
     case Rec of
 	undefined->
 	    From!{Ref,{error,"the module does not exist"}},
 	    Modules;
 	_ ->
-
-	    Old_restricted = Rec#module.restricted,
-	    Restricted = [Function | Old_restricted],
-	    Updated = {Module, Rec#module{restricted = Restricted}},
-	    From!{Ref,{ok,"the module was restricted"}},
-	    lists:keyreplace(Module, 1, Modules, Updated)
+	    case lists:member(Function,Rec#module.exported) of 
+		true ->
+		    Old_restricted = Rec#module.restricted,
+		    		    
+		    case Command of 
+			restrict->
+			    Restricted = [Function | Old_restricted],
+					    From!{Ref,{ok,"the module was restricted"}};
+			unrestrict ->
+					    Restricted = Old_restricted -- [Function],
+			    From!{Ref,{ok,"the module was unrestricted"}}
+				
+		    end,
+		    Updated = {Module, Rec#module{restricted = Restricted}},
+		    lists:keyreplace(Module, 1, Modules, Updated);
+		false ->
+		    From!{Ref,{error,"the module exists but the function does not exist"}},
+		    Modules    
+	    end
+		
     end.
 
 
-unrestrict(From,Ref,Module, Function, Modules) ->
-    Rec = proplists:get_value(Module, Modules),
-    case Rec of
-	undefined->
-	    From!{Ref,{error,"the module does not exist"}},
-	    Modules;
-	_ ->
+%% unrestrict(From,Ref,Module, Function, Modules) ->
+%%     Rec = proplists:get_value(Module, Modules),
+%%     case Rec of
+%% 	undefined->
+%% 	    From!{Ref,{error,"the module does not exist"}},
+%% 	    Modules;
+%% 	_ ->
 
-	    Old_restricted = Rec#module.restricted,
-	    Restricted = Old_restricted -- [Function],
-	    Updated = {Module, Rec#module{restricted = Restricted}},
-	    From!{Ref,{ok,"the module was unrestricted"}},
-	    lists:keyreplace(Module, 1, Modules, Updated)
-    end.   
+%% 	    Old_restricted = Rec#module.restricted,
+%% 	    Restricted = Old_restricted -- [Function],
+%% 	    Updated = {Module, Rec#module{restricted = Restricted}},
+%% 	    From!{Ref,{ok,"the module was unrestricted"}},
+%% 	    lists:keyreplace(Module, 1, Modules, Updated)
+%%     end.  
+
 
 delete_module_keyval(Module,Updated)->
     proplists:delete(Module,Updated).

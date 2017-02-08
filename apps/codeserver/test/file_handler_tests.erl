@@ -16,8 +16,9 @@ file_handler_test_() ->
       {"check files are loaded in dir loaded",fun load_file_from_dir/0},
       {"check if module is deleted when admin asks for it",fun admin_msg_delete_module/0},
       {"check directory loaded is added to the path",fun add_dir_to_path/0},
-      {"check you get correct md5 ",fun get_md5/0}
-      
+      {"check you get correct md5 ",fun get_md5/0},
+      {" Restrict admin_msg_restrict_undefined_function_input ",fun admin_msg_restrict_undefined_function_input/0},
+      {" Un-restrict admin_msg_restrict_undefined_function_input ",fun admin_msg_unrestrict_undefined_function_input/0}
      ]}.
 
 
@@ -45,16 +46,29 @@ spawn_file_handler_process()->
     ?assertMatch(true,is_pid(Pid)).
 
 admin_msg_restrict()->
-    Module = {"my_moduleRes", #module{restricted = []}},
-    Result = file_handler:restrict(self(),make_ref(),"my_moduleRes", {fRes, 0}, [Module]),
-    Expected = [{"my_moduleRes",#module{restricted = [{fRes, 0}]}}],
+    Result = file_handler:restrict("ets_table1", {start, 0}),
+    Expected ={ok,"the module was restricted"},
     ?assertEqual(Expected, Result).
 
-admin_msg_unrestrict()->
-    Module = {"my_module", #module{restricted = [{f, 0}]}},
-    Result = file_handler:unrestrict(self(),make_ref(),"my_module", {f, 0}, [Module]),
-    Expected = [{"my_module",#module{restricted = []}}],
+admin_msg_restrict_undefined_function_input()->
+    Result = file_handler:restrict("ets_table1", {random_fun, 0}),
+    Expected = {error,"the module exists but the function does not exist"},
     ?assertEqual(Expected, Result).
+
+
+admin_msg_unrestrict()->
+    file_handler:restrict("ets_table1", {start, 0}),
+    Result = file_handler:unrestrict("ets_table1", {start, 0}),
+    %% Module = {"my_module", #module{restricted = [{f, 0}]}},
+    %% Result = file_handler:unrestrict(self(),make_ref(),"my_module", {f, 0}),
+    Expected = {ok,"the module was unrestricted"},
+    ?assertEqual(Expected, Result).
+
+admin_msg_unrestrict_undefined_function_input()->
+      Result = file_handler:unrestrict("ets_table1", {random_fun, 0}),
+    Expected = {error,"the module exists but the function does not exist"},
+    ?assertEqual(Expected, Result).
+
 
 admin_msg_delete_module()->
     Module = {"my_module", #module{restricted = [{f, 0}]}},

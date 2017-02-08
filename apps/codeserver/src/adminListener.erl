@@ -61,7 +61,7 @@ check_process_send(Data,Sock)->
 
 check_format(Data)->
     Data_without_nextline = Data -- "\n",
-    Data_list = string:tokens(Data_without_nextline," "). 
+    string:tokens(Data_without_nextline," "). 
 
 process(Data,Sock)->
     case hd(Data) of
