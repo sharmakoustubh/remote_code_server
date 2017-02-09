@@ -1,6 +1,6 @@
 
 -module(ets_table1).
--export([start/0]).
+-export([start/0,return_ok/0, greet_me/1]).
  
  start() ->
      spawn(fun() ->
@@ -59,3 +59,11 @@
  	    end	    
      end.
  
+return_ok() ->
+    ok.
+
+greet_me(Name)->
+    "Hello "++Name.
+  
+add(A,B)->
+    A+B.

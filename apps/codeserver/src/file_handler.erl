@@ -7,9 +7,9 @@
 	 get_md5/1,
 	 createRecordForNewFiles/3,
 	 compile_and_load_file_from_dir/2,
+	 get_restricted/2,
 	 restrict/2,
 	 unrestrict/2,
-	 restrict_unrestrict/6,
 	 delete_module_keyval/1,
 	 delete_module_keyval/2,
 	 add_dir_to_path/1,
@@ -47,9 +47,12 @@ loop(Old_erl_files, Records_list,Counter)->
     file:write_file("/tmp/records", Contents),
     
     New_erl_files_path = get_files(),
+    Deleted_files = get_deleted_files(Old_erl_files,New_erl_files_path,[]),
+    Records_list_deleted_modules_removed =  remove_modules_of_deleted_files(Deleted_files,Records_list),
+
     {Erl_files,Beam_files} = separate_beam_erl_files(New_erl_files_path,[],[]),
 
-    Updated_erl_files = update(Old_erl_files, Erl_files, Records_list),
+    Updated_erl_files = update(Old_erl_files, Erl_files, Records_list_deleted_modules_removed),
 
     Eligible_beam_files = beam_check(Beam_files,Updated_erl_files,[]),
 
@@ -58,6 +61,34 @@ loop(Old_erl_files, Records_list,Counter)->
     Updated_Records_list_with_restricts = admin_msg(Updated_beam_files),
    loop(New_erl_files_path, Updated_Records_list_with_restricts,Counter+1).
 %%    Updated_Records_list_with_restricts.
+
+get_deleted_files([],_,Acc)->
+    Acc;
+
+get_deleted_files([H|T],New_erl_files_path,Acc)->
+    case lists:member(H,New_erl_files_path) of
+	true ->
+	    get_deleted_files(T,New_erl_files_path,Acc);
+	false ->
+	    get_deleted_files(T,New_erl_files_path,[H|Acc])
+    end.
+
+remove_modules_of_deleted_files([],Records_list)->
+    Records_list;
+remove_modules_of_deleted_files([H|T],Records_list)->
+    Mod_name = get_module_name(H),
+    case filename:extension(H)of
+	".erl"->
+	    Updated_Records_list = delete_module_keyval(Mod_name,Records_list),
+	    Files_related_to_deleted_file = Mod_name++"*",
+	    [file:delete(File)||File<-Files_related_to_deleted_file];   
+
+	".beam"->
+	    Updated_Records_list = delete_module_keyval(Mod_name,Records_list)
+   end,
+
+	    remove_modules_of_deleted_files(T,Updated_Records_list).
+
 
 separate_beam_erl_files([],Acc_erl,Acc_beam)->
     {Acc_erl,Acc_beam};
@@ -130,21 +161,30 @@ compile_and_load_file_from_dir(Mod_name_atom,Path)->
     code:purge(Mod_name_atom),
     case filename:extension(Path) of
 	".erl" ->	
-	   {ok, _}= compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]);
+	    compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]);
 	".beam"->
 	    do_nothing
     end,
   %%  io:format(user,"loading file ~p",[Path]),
-    code:load_file(Mod_name_atom).
+   case code:load_file(Mod_name_atom) of
+       {error, Error}->
+	   io:format(user,"error file llloaded ~p~n",[Error]),
+	   {error, Error};
+       Res ->
+	   Res
+   end.
     
 
 create_record(Mod_name,Mod_md5, Filetype) -> 
     Mod_name_atom = list_to_atom(Mod_name),
     Mod_info = Mod_name_atom:module_info(),
     Exported = proplists:get_value(exports, Mod_info),
+    Compile_time = proplists:get_value(time, Mod_name_atom:module_info(compile)),
     Result = #module{filetype = Filetype,
 		     exported =Exported,
-		     module_md5 =Mod_md5},
+		     module_md5 =Mod_md5,
+		     compile_time = Compile_time},
+%%    io:format(user,"Created Record is ----->>> ~p ~n",[Result]),
     Result.
 
 update_changed_files(_,[],Records_list)->
@@ -187,21 +227,35 @@ is_changed(Mod_name,New_md5,Records_list)->
 	    end 
     end.
 
-admin_msg(Updated)->
+admin_msg(Modules)->
     receive 
 	{From, Ref, restrict, Module, Function} ->
-	    restrict_unrestrict(From,Ref,Module, Function, Updated,restrict);
+	    case module_is_loaded(Module, Modules) of
+		true ->
+		    restrict(From, Ref, Function, Module, Modules);
+		false ->
+		    From ! {Ref, {error, "the module does not exist"}},
+		    Modules
+	    end;
+
 	{From,Ref,unrestrict,Module, Function} ->
-	    restrict_unrestrict(From,Ref,Module, Function, Updated,unrestrict);
+	    case module_is_loaded(Module, Modules) of
+		true ->
+		    unrestrict(From, Ref, Function, Module, Modules);
+		false ->
+		    From ! {Ref, {error, "the module exists but the function does not exist"}},
+		    Modules
+	    end;
+
 	{From,Ref,delete_module,Module} ->
-	    Res = delete_module_keyval(Module, Updated),
+	    Res = delete_module_keyval(Module, Modules),
 	    From ! {Ref, ok},
 	    Res;
 	{From,Ref,fetch} ->
-	    From ! {Ref, Updated},
-	    Updated	    
+	    From ! {Ref, Modules},
+	    Modules	    
     after 0 -> 
-	    Updated
+	    Modules
     end.
 
 fetch()->
@@ -212,13 +266,13 @@ fetch()->
 	    {ok,List}
     after 500 ->
 	    {error, no_response}
-
     end.
 
 restrict(Module, Function) ->
-    ?MODULE ! {self(), make_ref(), restrict, Module, Function},
+    Ref = make_ref(),
+    ?MODULE ! {self(), Ref, restrict, Module, Function},
     receive
-	{_Ref, Result} ->
+	{Ref, Result} ->
 	    Result
     after 500 ->
 	    {error, no_response}
@@ -242,78 +296,62 @@ delete_module_keyval(Module)->
 	    {error, no_response}
     end.
 
-%% restrict(From,Ref,Module, Function,Modules)->
-%%     Rec = proplists:get_value(Module, Modules),
-%%     io:format(user,"exported functions in Module~p Rec ~p Exported funs ~p ~n",[Module,Rec,Rec#module.exported]),
-%%     case Rec of
-%% 	undefined->
-%% 	    From!{Ref,{error,"the module does not exist"}},
-%% 	    Modules;
-%% 	_ ->
-%% 	    case lists:member(Function,Rec#module.exported) of 
-%% 		true ->
-%% 		    Old_restricted = Rec#module.restricted,
-%% 		    Restricted = [Function | Old_restricted],
-%% 		    Updated = {Module, Rec#module{restricted = Restricted}},
-%% 		    Old_restricted = Rec#module.restricted,
-%% 		    Restricted = [Function | Old_restricted],
-%% 		    Updated = {Module, Rec#module{restricted = Restricted}},
+module_is_loaded(ModuleName, Modules)->
+    lists:keymember(ModuleName, 1, Modules).
 
-%% 		    lists:keyreplace(Module, 1, Modules, Updated);
-%% 		false ->
-%% 		    From!{Ref,{error,"the module exists but the function does not exist"}},
-%% 		    Modules    
-%% 	    end
-		
-%%     end.
+is_exported(Function, Module) ->
+    Exported = Module#module.exported,
+    lists:member(Function, Exported).
 
-
-restrict_unrestrict(From,Ref,Module, Function,Modules,Command)->
-    Rec = proplists:get_value(Module, Modules),
-   %% io:format(user,"exported functions in Module~p Rec ~p Exported funs ~p ~n",[Module,Rec,Rec#module.exported]),
-    case Rec of
-	undefined->
-	    From!{Ref,{error,"the module does not exist"}},
-	    Modules;
-	_ ->
-	    case lists:member(Function,Rec#module.exported) of 
-		true ->
-		    Old_restricted = Rec#module.restricted,
-		    		    
-		    case Command of 
-			restrict->
-			    Restricted = [Function | Old_restricted],
-					    From!{Ref,{ok,"the module was restricted"}};
-			unrestrict ->
-					    Restricted = Old_restricted -- [Function],
-			    From!{Ref,{ok,"the module was unrestricted"}}
-				
-		    end,
-		    Updated = {Module, Rec#module{restricted = Restricted}},
-		    lists:keyreplace(Module, 1, Modules, Updated);
-		false ->
-		    From!{Ref,{error,"the module exists but the function does not exist"}},
-		    Modules    
-	    end
-		
+restrict(From, Ref, Function, ModuleName, Modules) ->
+    
+    case is_exported(Function, proplists:get_value(ModuleName, Modules)) of
+	true ->
+	    Updated = add_restricted_function(Function, ModuleName, Modules),
+	    From ! {Ref, {ok, "the function in module was restricted"}},
+	    Updated;
+	false ->
+	    From ! {Ref, {error, "the module exists but the function does not exist"}},
+	    Modules
     end.
 
+unrestrict(From, Ref, Function, ModuleName, Modules) ->
+    case is_exported(Function, proplists:get_value(ModuleName, Modules)) of
+	true ->
+	    Updated = remove_restricted_function(Function, ModuleName, Modules),
+	    From ! {Ref, {ok, "the function in module was unrestricted"}},
+	    Updated;
+	false ->
+	    From ! {Ref, {error, "the module exists but the function does not exist"}},
+	    Modules
+    end.
 
-%% unrestrict(From,Ref,Module, Function, Modules) ->
-%%     Rec = proplists:get_value(Module, Modules),
-%%     case Rec of
-%% 	undefined->
-%% 	    From!{Ref,{error,"the module does not exist"}},
-%% 	    Modules;
-%% 	_ ->
+get_restricted(ModuleName, Modules) ->
+    Module = proplists:get_value(ModuleName, Modules),
+    %%io:format(user,"Inside get_restricted Module ~p ~n", [Module]),
+    Restricted =  Module#module.restricted,
+   %% io:format(user,"restricted inside is_restricted file handler.................>>>>>>>>>> ~p ~n", [Restricted]),
+    Restricted.
 
-%% 	    Old_restricted = Rec#module.restricted,
-%% 	    Restricted = Old_restricted -- [Function],
-%% 	    Updated = {Module, Rec#module{restricted = Restricted}},
-%% 	    From!{Ref,{ok,"the module was unrestricted"}},
-%% 	    lists:keyreplace(Module, 1, Modules, Updated)
-%%     end.  
+add_restricted_function(Function, ModuleName, Modules) ->
+    Restricted = get_restricted(ModuleName, Modules),
+    NewRestricted = lists:usort([Function | Restricted]),
+    change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted).
 
+remove_restricted_function(Function, ModuleName, Modules) ->
+    Restricted = get_restricted(ModuleName, Modules),
+    NewRestricted = Restricted -- [Function],
+    change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted).
+
+change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted) ->
+    Module = proplists:get_value(ModuleName, Modules),
+    NewModule = case is_exported(Function, Module) of
+		    true ->
+			Module#module{restricted = NewRestricted};
+		    false ->
+			Module
+		end,
+    lists:keyreplace(ModuleName, 1, Modules, {ModuleName, NewModule}).
 
 delete_module_keyval(Module,Updated)->
     proplists:delete(Module,Updated).

@@ -8,6 +8,9 @@
 	 execute_list_clients/1
 	]).
 
+-define(INPUT_ERROR,"This command is not executable; Executable commands are restrict with module_name function_name function_arity,unrestrict with module_name function_name function_arity,delete,list_clients,exit").
+
+
 start()->
     Ref = make_ref(),
     Parent = self(),
@@ -47,8 +50,10 @@ do_recv(Sock) ->
 	    io:format("Got data: ~p~n", [Data]),
 	    check_process_send(Data,Sock),
 	    do_recv(Sock);
+	{error, closed} ->
+	    io:format("Connection closed~n", []);
 	Error ->
-	    io:format("Error! ~p~n", [Error])
+	    io:format("Unhandled error: ~p~n", [Error])
     end.
 
 
@@ -64,17 +69,51 @@ check_format(Data)->
     string:tokens(Data_without_nextline," "). 
 
 process(Data,Sock)->
+    Count_elements = count(Data,0),
     case hd(Data) of
     	"restrict"->
-    	    execute_restrict(Data);
+	    case Count_elements of
+		4->
+		    execute_restrict(Data);
+		_->
+		    ?INPUT_ERROR
+		    
+	    end;
+	
 	"unrestrict"->
-            execute_unrestrict(Data);
+	    case Count_elements of
+		4->
+		    execute_unrestrict(Data);	
+		
+		_->
+		    ?INPUT_ERROR
+	    end;
+	
 	"list_clients"->
-    	    execute_list_clients(Sock);
+	    case Count_elements of
+		1->
+		    execute_list_clients(Sock);
+		_->
+		    ?INPUT_ERROR
+	    end;
+
 	"delete"->
-	    execute_delete(Data);
+	    
+	    case Count_elements of
+		2->
+		    execute_delete(Data);
+		_->
+		    ?INPUT_ERROR
+	    end;
+
 	"exit"->
-	    terminate(Sock);
+	    case Count_elements of
+		1->
+		    
+		    terminate(Sock);
+		_->
+		    ?INPUT_ERROR
+	    end;
     	_->
     	    "This command is not executable; Executable commands are restrict,unrestrict,delete,list_clients,exit"
     end.
@@ -116,7 +155,12 @@ execute_delete(Data)->
 
 
 execute_list_clients(Sock)->
-   inet:sockname(Sock).
+   {ok,{{IP1,IP2,IP3,IP4},Port}} = inet:sockname(Sock),
+%%    Result = lists:flatten(io_lib:format("~p", [IP]))++lists:flatten(io_lib:format("~p", [Port])),
+    
+    Result = lists:flatten(io_lib:format("~p", [Port])),
+
+    "IP is "++ integer_to_list(IP1)++"."++integer_to_list(IP2)++"."++ integer_to_list(IP3)++"."++ integer_to_list(IP4)++"."++"and port of the clients are "++Result.
 
 parse(Data)->
     [_,Module,Function,Arity] = Data,
@@ -134,4 +178,9 @@ terminate(Sock)->
 send(Sock,Result)->
     Formatted_data = io_lib:format("~p~n",[Result]),
     gen_tcp:send(Sock, Formatted_data).
+
+count([],Counter)->
+    Counter;
+count([_H|T],Counter)->
+    count(T,Counter+1).
 

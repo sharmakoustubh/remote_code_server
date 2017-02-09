@@ -76,12 +76,12 @@ check_parse()->
 
 execute_restrict_should_return_ok_upon_pass()->
     Result = adminListener:execute_restrict(["restrict","ets_table1","start","0"]), 
-    ?assertEqual("the module was restricted",Result).
+    ?assertEqual("the function in module was restricted",Result).
 
 execute_unrestrict_should_return_ok_upon_pass()->
-    "the module was restricted" = adminListener:execute_restrict(["restrict","ets_table1","start","0"]), 
+    "the function in module was restricted" = adminListener:execute_restrict(["restrict","ets_table1","start","0"]), 
     Result = adminListener:execute_unrestrict(["unrestrict","ets_table1","start","0"]), 
-    ?assertEqual("the module was unrestricted",Result).
+    ?assertEqual("the function in module was unrestricted",Result).
 
 execute_delete_module_keyval_should_return_ok_upon_pass()->
     Result = adminListener:execute_delete(["delete","ets_table1"]), 
@@ -170,7 +170,6 @@ execute_delete_module_keyval_should_return_ok_upon_pass()->
 %%     Expected = true, 
 %%     Result = file_handler:add_dir_to_path("/home/ekousha/codeserver/apps/codeserver/loaded"),
 %%     ?assertEqual(Expected,Result).
-
 
 %% get_md5()->
 %%     Expected = "2FEFF17C44894ADFB17326621C8ACA8A",

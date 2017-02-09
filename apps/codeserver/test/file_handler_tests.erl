@@ -47,7 +47,7 @@ spawn_file_handler_process()->
 
 admin_msg_restrict()->
     Result = file_handler:restrict("ets_table1", {start, 0}),
-    Expected ={ok,"the module was restricted"},
+    Expected ={ok,"the function in module was restricted"},
     ?assertEqual(Expected, Result).
 
 admin_msg_restrict_undefined_function_input()->
@@ -61,7 +61,7 @@ admin_msg_unrestrict()->
     Result = file_handler:unrestrict("ets_table1", {start, 0}),
     %% Module = {"my_module", #module{restricted = [{f, 0}]}},
     %% Result = file_handler:unrestrict(self(),make_ref(),"my_module", {f, 0}),
-    Expected = {ok,"the module was unrestricted"},
+    Expected = {ok,"the function in module was unrestricted"},
     ?assertEqual(Expected, Result).
 
 admin_msg_unrestrict_undefined_function_input()->
@@ -75,20 +75,6 @@ admin_msg_delete_module()->
     Result = file_handler:delete_module_keyval("my_module",[Module]),
     Expected = [],
     ?assertEqual(Expected, Result).
-	
-    %% 	file_handler ! {self(), Ref, delete_module,"ets_table1"},
-    %% Got    = receive  
-    %% 		 {Ref,Result}->
-    %% 		     Result
-    %% 	     after 5000->
-    %% 		     {error,timeout}
-    %% 	     end,
-    %% ?assertMatch(Expected,Got).
-
-%% check_files_in_directory() ->
-%%     Result = file_handler:get_files(),
-%%     Expected = ["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],
-%%     ?assertMatch(Expected, Result).
 
 load_file_from_dir()-> 
     Expected = {module,ets_table1},
@@ -108,7 +94,7 @@ add_dir_to_path()->
 
 
 get_md5()->
-    Expected = "2FEFF17C44894ADFB17326621C8ACA8A",
+    Expected = "8CE9FCB2B010A44FD97CD3AFBC9FD3CD",
     Got =  file_handler:get_md5("/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"),
     ?assertMatch(Expected,Got).
 
@@ -205,18 +191,39 @@ check_fetch()->
     {ok,Result} = file_handler:fetch(),
 %%    Mod_rec1 = proplists:get_value("amend_file",Result),
 %%    R1_exported = Mod_rec1#module.exported,
-    Expect = [{"amend_file",
+    Expect =    [{"amend_file",
                    {module,".erl",[],
                            [{my_fun_in_amend,0},
                             {module_info,0},
                             {module_info,1}],
-                           "25803448269B32F6C2FF222F4BF65839"}},
+                           "25803448269B32F6C2FF222F4BF65839",
+                           {2017,2,9,15,10,47}}},
                   {"ets_table1",
                    {module,".erl",[],
-                           [{start,0},{module_info,0},{module_info,1}],
-                           "2FEFF17C44894ADFB17326621C8ACA8A"}}],
+                           [{start,0},
+                            {return_ok,0},
+                            {greet_me,1},
+                            {module_info,0},
+                            {module_info,1}],
+                           "8CE9FCB2B010A44FD97CD3AFBC9FD3CD",
+                           {2017,2,9,15,10,47}}}],
 
-    ?assertMatch(Expect,Result).
+    ?assertMatch([{"amend_file",
+                   {module,".erl",[],
+                           [{my_fun_in_amend,0},
+                            {module_info,0},
+                            {module_info,1}],
+                           "25803448269B32F6C2FF222F4BF65839",
+                           _}},
+                  {"ets_table1",
+                   {module,".erl",[],
+                           [{start,0},
+                            {return_ok,0},
+                            {greet_me,1},
+                            {module_info,0},
+                            {module_info,1}],
+                           "8CE9FCB2B010A44FD97CD3AFBC9FD3CD",
+                           _}}],Result).
 
 
 
