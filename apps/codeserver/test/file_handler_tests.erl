@@ -23,7 +23,7 @@ file_handler_test_() ->
 
 
 setup() ->
-    ok = file_handler:start().
+    file_handler:start().
 
 cleanup(_) ->
     exit(whereis(file_handler),kill),
@@ -31,7 +31,6 @@ cleanup(_) ->
     ensure_exited().
 
 ensure_exited() ->
-
     case whereis(file_handler) of
 	undefined ->
 	    ok;
@@ -42,7 +41,7 @@ ensure_exited() ->
 
 spawn_file_handler_process()->
     Pid= whereis(file_handler),
- %%   io:format("~p~n",[Pid]),    
+    %%   io:format("~p~n",[Pid]),    
     ?assertMatch(true,is_pid(Pid)).
 
 admin_msg_restrict()->
@@ -65,7 +64,7 @@ admin_msg_unrestrict()->
     ?assertEqual(Expected, Result).
 
 admin_msg_unrestrict_undefined_function_input()->
-      Result = file_handler:unrestrict("ets_table1", {random_fun, 0}),
+    Result = file_handler:unrestrict("ets_table1", {random_fun, 0}),
     Expected = {error,"the module exists but the function does not exist"},
     ?assertEqual(Expected, Result).
 
@@ -191,22 +190,6 @@ check_fetch()->
     {ok,Result} = file_handler:fetch(),
 %%    Mod_rec1 = proplists:get_value("amend_file",Result),
 %%    R1_exported = Mod_rec1#module.exported,
-    Expect =    [{"amend_file",
-                   {module,".erl",[],
-                           [{my_fun_in_amend,0},
-                            {module_info,0},
-                            {module_info,1}],
-                           "25803448269B32F6C2FF222F4BF65839",
-                           {2017,2,9,15,10,47}}},
-                  {"ets_table1",
-                   {module,".erl",[],
-                           [{start,0},
-                            {return_ok,0},
-                            {greet_me,1},
-                            {module_info,0},
-                            {module_info,1}],
-                           "8CE9FCB2B010A44FD97CD3AFBC9FD3CD",
-                           {2017,2,9,15,10,47}}}],
 
     ?assertMatch([{"amend_file",
                    {module,".erl",[],
@@ -223,6 +206,11 @@ check_fetch()->
                             {module_info,0},
                             {module_info,1}],
                            "8CE9FCB2B010A44FD97CD3AFBC9FD3CD",
+                           _}},
+                  {"robin",
+                   {module,".erl",[],
+                           [{seq,2},{module_info,0},{module_info,1}],
+                           "F1544FD0C488AB4EFBCD95ABCC30374C",
                            _}}],Result).
 
 

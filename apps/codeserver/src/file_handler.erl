@@ -27,7 +27,7 @@ start()->
     Parent = self(),
    % io:format("Starting file handler main function"),
     spawn(fun() ->		  
-		  true = register(?MODULE,self()),
+		  register(?MODULE,self()),
 		  Parent ! {ok, Ref},
 		  add_dir_to_path("/home/ekousha/codeserver/apps/codeserver/loaded/"),
 		  loop([],[],1)
