@@ -8,7 +8,6 @@ file_handler_test_() ->
      fun setup/0,
      fun cleanup/1,
      [
-   %%  {"check  files are there in dir",fun check_files_in_directory/0},
       {"check file handler process starts",fun spawn_file_handler_process/0},   
       {"check admin can put Module Function in restricted field of record", fun admin_msg_restrict/0},
       {"check admin can delete Module Function from restricted field of record",fun admin_msg_unrestrict/0},
@@ -160,7 +159,6 @@ cleanup2(Args) ->
     file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"),
     file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.beam").
 
-
 	     
 check_amended_file_is_changed_in_rec()->
     timer:sleep(500),
@@ -183,20 +181,15 @@ check_amended_file_is_changed_in_rec()->
     ?assertEqual(lists:sort([{new_fun,0},{my_fun_in_amend,0},{module_info,0},{module_info,1}]),lists:sort(R2_exported)).
 
 
-%%[{my_fun_in_amend,0},{module_info,0},{module_info,1}] 
-
 check_fetch()->   
     timer:sleep(500),
     {ok,Result} = file_handler:fetch(),
-%%    Mod_rec1 = proplists:get_value("amend_file",Result),
-%%    R1_exported = Mod_rec1#module.exported,
-
     ?assertMatch([{"amend_file",
                    {module,".erl",[],
                            [{my_fun_in_amend,0},
                             {module_info,0},
                             {module_info,1}],
-                           "25803448269B32F6C2FF222F4BF65839",
+                           _,
                            _}},
                   {"ets_table1",
                    {module,".erl",[],
@@ -205,77 +198,12 @@ check_fetch()->
                             {greet_me,1},
                             {module_info,0},
                             {module_info,1}],
-                           "8CE9FCB2B010A44FD97CD3AFBC9FD3CD",
+                           _,
                            _}},
                   {"robin",
                    {module,".erl",[],
-                           [{seq,2},{module_info,0},{module_info,1}],
-                           "F1544FD0C488AB4EFBCD95ABCC30374C",
+                           [{seq,2},{map,2},{module_info,0},{module_info,1}],
+                           _,
                            _}}],Result).
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-%% list_md5()->
-%%     %% Expect = ["2FEFF17C44894ADFB17326621C8ACA8A","25803448269B32F6C2FF222F4BF65839"],
-%%     Expect =["2FEFF17C44894ADFB17326621C8ACA8A","25803448269b32f6c2ff222f4bf65839"],
-
-%%     Got = file_handler:list_md5(["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl","/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"]),
-    
-%%     ?assertMatch(Expect,Got).
-
-%% update_if_new()->
-%%     Expect = [{"ets_table1",
-%% 	       {module,"erl",[],
-%% 		[{start,0},{module_info,0},{module_info
-%% 					   ,1}],
-%% 		"2FEFF17C44894ADFB17326621C8ACA8A"}}],
-%%     Got = file_handlery:update_changed_files(["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],Expect),
-%%     ?assertMatch(Expect,Got).
-
-
-%% fun() ->
-%% 	     setup(),
-%% 	     Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
-%% 	     os:cmd("cp /home/ekousha/codeserver/apps/codeserver/test/amend_file.erl " ++ Target),
-%% 	     ?assertEqual(true, filelib:is_file(Target))
-%%      end,
-%%      fun(Arg) ->
-%% 	     cleanup(Arg),
-%% 	     file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"),
-%% 	     file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.beam")
-%%      end,
-
-  %% ?assertMatch([{"ets_table1",#module{filetype = _,
-    %% 					restricted = _,
-    %% 					exported = _,
-    %% 					module_md5 = _}},
-    %% 		  {"amend_file",#module{filetype = _,
-    %% 					restricted = _,
-    %% 					exported = _,
-    %% 					module_md5 = _}}],
-    
-    

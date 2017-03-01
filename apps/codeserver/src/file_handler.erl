@@ -25,7 +25,7 @@
 start()->
     Ref = make_ref(),
     Parent = self(),
-   % io:format("Starting file handler main function"),
+   %% io:format("Starting file handler main function"),
     spawn(fun() ->		  
 		  register(?MODULE,self()),
 		  Parent ! {ok, Ref},
@@ -49,17 +49,17 @@ loop(Old_erl_files, Records_list,Counter)->
     New_erl_files_path = get_files(),
     Deleted_files = get_deleted_files(Old_erl_files,New_erl_files_path,[]),
     Records_list_deleted_modules_removed =  remove_modules_of_deleted_files(Deleted_files,Records_list),
-
+    
     {Erl_files,Beam_files} = separate_beam_erl_files(New_erl_files_path,[],[]),
-
+    
     Updated_erl_files = update(Old_erl_files, Erl_files, Records_list_deleted_modules_removed),
-
+    
     Eligible_beam_files = beam_check(Beam_files,Updated_erl_files,[]),
-
+    
     Updated_beam_files = update(Old_erl_files, Eligible_beam_files,Updated_erl_files ),
-
+    
     Updated_Records_list_with_restricts = admin_msg(Updated_beam_files),
-   loop(New_erl_files_path, Updated_Records_list_with_restricts,Counter+1).
+    loop(New_erl_files_path, Updated_Records_list_with_restricts,Counter+1).
 %%    Updated_Records_list_with_restricts.
 
 get_deleted_files([],_,Acc)->
@@ -82,12 +82,11 @@ remove_modules_of_deleted_files([H|T],Records_list)->
 	    Updated_Records_list = delete_module_keyval(Mod_name,Records_list),
 	    Files_related_to_deleted_file = Mod_name++"*",
 	    [file:delete(File)||File<-Files_related_to_deleted_file];   
-
+	
 	".beam"->
 	    Updated_Records_list = delete_module_keyval(Mod_name,Records_list)
-   end,
-
-	    remove_modules_of_deleted_files(T,Updated_Records_list).
+    end,
+    remove_modules_of_deleted_files(T,Updated_Records_list).
 
 
 separate_beam_erl_files([],Acc_erl,Acc_beam)->
@@ -133,27 +132,35 @@ createRecordForNewFiles(Old_erlbeam_files,[H|T], Old_keyval)->
 	  %% io:format("File was a member~n"),
 	   createRecordForNewFiles(Old_erlbeam_files,T,Old_keyval);
        false ->
-	  %% io:format("creating new record for ~p~n",[H]),
+	   %% io:format("creating new record for ~p~n",[H]),
 	   Mod_name = get_module_name(H),
-	   Mod_md5 = get_md5(H),
 	   Mod_name_atom = list_to_atom(Mod_name),
-	   compile_and_load_file_from_dir(Mod_name_atom,H),
-	   Filetype = filename:extension(H),
-	   New_Rec = create_record(Mod_name, Mod_md5,Filetype),
-	   New_keyval = {Mod_name, New_Rec},
-	   Old_keyval_updated = [New_keyval | Old_keyval],
-	 %%  io:format("creating record for the above mentioned new file ~p~n",[Old_keyval_updated]),
-	   createRecordForNewFiles(Old_erlbeam_files, T,Old_keyval_updated)
-       end.
+	   case compile_and_load_file_from_dir(Mod_name_atom,H) of
+	       {error,_} ->
+		   createRecordForNewFiles(Old_erlbeam_files,T,Old_keyval);
+	       _->
+		   Mod_md5 = get_md5(H),
+		   Filetype = filename:extension(H),
+		   New_Rec = create_record(Mod_name, Mod_md5,Filetype),
+		   New_keyval = {Mod_name, New_Rec},
+		   Old_keyval_updated = [New_keyval | Old_keyval],
+		   createRecordForNewFiles(Old_erlbeam_files, T,Old_keyval_updated)
+	   end
+   end.
 
 get_module_name(File)->
     filename:rootname(filename:basename(File)).
 
 get_md5(Filepath)->
-    {ok,Bin} =file:read_file(Filepath),
-    Md5_bin = crypto:hash(md5,Bin),
-    Md5_hex =hexer:bin_to_hex(Md5_bin),
-    erlang:binary_to_list(Md5_hex).
+%%    io:format(user,"in get_md5~p~n",[Filepath]),
+    case file:read_file(Filepath) of
+	{ok,Bin}->
+	    Md5_bin = crypto:hash(md5,Bin),
+	    Md5_hex =hexer:bin_to_hex(Md5_bin),
+	    erlang:binary_to_list(Md5_hex);
+	{error,Error}->
+	    {error,Error}
+    end.
 
 compile_and_load_file_from_dir(Mod_name_atom,Path)->
     code:purge(Mod_name_atom),
@@ -161,19 +168,16 @@ compile_and_load_file_from_dir(Mod_name_atom,Path)->
     code:purge(Mod_name_atom),
     case filename:extension(Path) of
 	".erl" ->	
-	    compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]);
+	    case catch compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]) of
+	       {'EXIT',_} ->
+		    do_nothing;
+		_->
+		    code:load_file(Mod_name_atom)		   
+	    end;
 	".beam"->
-	    do_nothing
-    end,
-  %%  io:format(user,"loading file ~p",[Path]),
-   case code:load_file(Mod_name_atom) of
-       {error, Error}->
-	   io:format(user,"error file llloaded ~p~n",[Error]),
-	   {error, Error};
-       Res ->
-	   Res
-   end.
-    
+	    code:load_file(Mod_name_atom)
+    end.
+
 
 create_record(Mod_name,Mod_md5, Filetype) -> 
     Mod_name_atom = list_to_atom(Mod_name),
@@ -192,37 +196,45 @@ update_changed_files(_,[],Records_list)->
 
 update_changed_files(Old_erl_files,[H|T],Old_keyval)->
     Mod_name = get_module_name(H),
-    Mod_md5 = get_md5(H),
-    Mod_name_atom = list_to_atom(Mod_name),
-    Filetype = filename:extension(H),
-    case is_changed(Mod_name,Mod_md5,Old_keyval)of
-	false ->
-	  %%%  io:format("file is not changed ~n"),
-	    update_changed_files(Old_erl_files,T,Old_keyval);	
-	true ->
-	 %%   io:format("file is Changed ~n"),
-	    compile_and_load_file_from_dir(Mod_name_atom,H),
-	    New_Rec = create_record(Mod_name, Mod_md5,Filetype),
-	    New_keyval = {Mod_name, New_Rec},
-	    Old_keyval_updated = lists:keyreplace(Mod_name,1,Old_keyval,New_keyval),
-	    update_changed_files(Old_erl_files,T,Old_keyval_updated);
-	error ->
-	   %% io:format("~p~n",["new_file"]),
-	    update_changed_files(Old_erl_files,T,Old_keyval)
+    case get_md5(H) of
+	{error,_}->
+	   %% io:format(user,"get md5 gives error for file ~p ~n",[H]),
+	    update_changed_files(Old_erl_files,T,Old_keyval);
+	Mod_md5 ->
+	    Mod_name_atom = list_to_atom(Mod_name),
+	    Filetype = filename:extension(H),
+	    case is_changed(Mod_name,Mod_md5,Old_keyval) of
+		false ->
+		   
+		    update_changed_files(Old_erl_files,T,Old_keyval);	
+		true ->
+		    %% io:format(user,"file is changed ~p ~n",[H]),
+		    case compile_and_load_file_from_dir(Mod_name_atom,H) of
+			{error,_} ->
+			  %%  io:format(user,"file is not compilable ~p ~n",[H]),
+			    update_changed_files(Old_erl_files,T,Old_keyval);
+			_->			  
+			    New_Rec = create_record(Mod_name, Mod_md5,Filetype),
+			    New_keyval = {Mod_name, New_Rec},
+			    Old_keyval_updated = lists:keyreplace(Mod_name,1,Old_keyval,New_keyval),
+			    update_changed_files(Old_erl_files,T,Old_keyval_updated)
+		    end
+		
+	    end
     end.
 
 is_changed(Mod_name,New_md5,Records_list)->
     Value = proplists:get_value(Mod_name,Records_list), 
     case Value of 
 	undefined ->
-	    error;
+	   %% io:format(user,"Val does not exist for robin over here record list is  ~p ~n",[Records_list]),
+	    true;
 	_ ->
 	    Curr_md5 = Value#module.module_md5,
 	    case Curr_md5 of
 		New_md5->
 		    false;
 		_ ->
-		  %%  io:format(user,"Changed file is ~p Curr_md5 ~p New_md5 ~p ~n",[Mod_name , Curr_md5, New_md5]),
 		    true
 	    end 
     end.

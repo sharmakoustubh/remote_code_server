@@ -165,8 +165,8 @@ pretty_print_info(H) ->
 execute_run(Data)->
     {ok, Modules} = file_handler:fetch(),
     case catch parse(Data) of
-	{'EXIT', Error}->
-	    Error;
+	{'EXIT', _}->
+	    io_lib:format("~p~n",["You have entered an expression that cannot be parsed please enter in the following format: Command Module Function Arg1, Arg2, Arg3"]);
 	{Module, {Function, Arity}, Args_list}->
 	    Result = run_seq([fun module_exists/3,
 			      fun is_exported/3,
@@ -177,9 +177,10 @@ execute_run(Data)->
 		    Run_fun_res =  run_fun(Module,Function,Args_list),
 		    io_lib:format("~p~n",[Run_fun_res]);	    
 		{error,Msg}->
-		    Msg
-	    end
-    end.
+		    io_lib:format("~p~n",[Msg])
+	    end;
+	_->
+	    io_lib:format("~p~n",["You have entered an expression that cannot be parsed please enter in the following format: Command Module Function Arg1, Arg2, Arg3"])	  end.
 
 parse(Data)->
     io:format(user,"Data is .......> ~p ~n", [Data]),
@@ -191,8 +192,10 @@ parse(Data)->
     io:format(user,"Parse results are---->>>>> mod ~p fun ~p  args list ~p  Args Number  ~p ~n", [Module,Function_atom,Args_list,Args_number]),
     {Module,{Function_atom,Args_number},Args_list}.
 
+tokenise_data_for_n_terms([],Acc,_)->
+    string:tokens(lists:reverse(Acc),",");
+
 tokenise_data_for_n_terms(T,Acc,0)->
-%%    {string:tokens(lists:reverse(Acc),","),T},
     lists:append(string:tokens(lists:reverse(Acc),","),T);
 
 tokenise_data_for_n_terms([H|T],Acc,Max)->
@@ -259,5 +262,6 @@ terminate(Sock)->
     gen_tcp:close(Sock).
 
 send(Sock,Result)->
+    io:format("sending this on tcp ~p~n",[Result]),
     gen_tcp:send(Sock, Result).
 
