@@ -1,12 +1,12 @@
 -module(file_handler).
--export([start/0,
+-export([start/1,
 	 loop/3,
 	 create_record/3,
-	 get_files/0,
+	 get_files/1,
 	 get_module_name/1,
 	 get_md5/1,
-	 createRecordForNewFiles/3,
-	 compile_and_load_file_from_dir/2,
+	 create_records_for_new_files/4,
+	 compile_and_load_file_from_dir/3,
 	 get_restricted/2,
 	 restrict/2,
 	 unrestrict/2,
@@ -14,23 +14,21 @@
 	 delete_module_keyval/2,
 	 add_dir_to_path/1,
 	 fetch/0,
-	 update_changed_files/3,
+	 update_changed_files/4,
 	 is_changed/3,
 	 beam_check/3,
 	 separate_beam_erl_files/3]).
 
 -include("record_definition.hrl").
 
-
-start()->
+start(User_defined_path)->
     Ref = make_ref(),
     Parent = self(),
-   %% io:format("Starting file handler main function"),
     spawn(fun() ->		  
 		  register(?MODULE,self()),
 		  Parent ! {ok, Ref},
-		  add_dir_to_path("/home/ekousha/codeserver/apps/codeserver/loaded/"),
-		  loop([],[],1)
+		  add_dir_to_path(User_defined_path),
+		  loop([],[],User_defined_path)
 		  
 	  end),
     receive
@@ -40,27 +38,32 @@ start()->
 	    {error, "Couldn't start main"}
     end.
 
-loop(Old_erl_files, Records_list,Counter)->
+
+add_dir_to_path(Dir)->
+    code:add_patha(Dir).
+
+loop(Old_erl_files, Modules,User_defined_path)->
     Contents = io_lib:format("Old erl files: ~p~n"
 			     "Record list: ~p~n",
-			     [Old_erl_files, Records_list]),
+			     [Old_erl_files, Modules]),
     file:write_file("/tmp/records", Contents),
-    
-    New_erl_files_path = get_files(),
+    New_erl_files_path = get_files(User_defined_path),
     Deleted_files = get_deleted_files(Old_erl_files,New_erl_files_path,[]),
-    Records_list_deleted_modules_removed =  remove_modules_of_deleted_files(Deleted_files,Records_list),
-    
+    Modules_deleted_modules_removed =  remove_modules_of_deleted_files(Deleted_files,Modules),
     {Erl_files,Beam_files} = separate_beam_erl_files(New_erl_files_path,[],[]),
-    
-    Updated_erl_files = update(Old_erl_files, Erl_files, Records_list_deleted_modules_removed),
-    
+    Updated_erl_files = update(Old_erl_files, Erl_files, Modules_deleted_modules_removed,User_defined_path),
     Eligible_beam_files = beam_check(Beam_files,Updated_erl_files,[]),
-    
-    Updated_beam_files = update(Old_erl_files, Eligible_beam_files,Updated_erl_files ),
-    
-    Updated_Records_list_with_restricts = admin_msg(Updated_beam_files),
-    loop(New_erl_files_path, Updated_Records_list_with_restricts,Counter+1).
-%%    Updated_Records_list_with_restricts.
+    Updated_beam_files = update(Old_erl_files, Eligible_beam_files,Updated_erl_files,User_defined_path),
+    Updated_Modules_with_restricts = admin_msg(Updated_beam_files),
+    loop(New_erl_files_path, Updated_Modules_with_restricts,User_defined_path).
+
+%% get_files() ->
+%%     filelib:wildcard("/home/ekousha/codeserver/apps/codeserver/loaded/*.{erl,beam}").
+
+get_files(User_defined_path) ->
+    filelib:wildcard(User_defined_path ++ "*.{erl,beam}").
+
+
 
 get_deleted_files([],_,Acc)->
     Acc;
@@ -73,20 +76,19 @@ get_deleted_files([H|T],New_erl_files_path,Acc)->
 	    get_deleted_files(T,New_erl_files_path,[H|Acc])
     end.
 
-remove_modules_of_deleted_files([],Records_list)->
-    Records_list;
-remove_modules_of_deleted_files([H|T],Records_list)->
+remove_modules_of_deleted_files([],Modules)->
+    Modules;
+remove_modules_of_deleted_files([H|T],Modules)->
     Mod_name = get_module_name(H),
     case filename:extension(H)of
 	".erl"->
-	    Updated_Records_list = delete_module_keyval(Mod_name,Records_list),
+	    Updated_Modules = delete_module_keyval(Mod_name,Modules),
 	    Files_related_to_deleted_file = Mod_name++"*",
 	    [file:delete(File)||File<-Files_related_to_deleted_file];   
-	
 	".beam"->
-	    Updated_Records_list = delete_module_keyval(Mod_name,Records_list)
+	    Updated_Modules = delete_module_keyval(Mod_name,Modules)
     end,
-    remove_modules_of_deleted_files(T,Updated_Records_list).
+    remove_modules_of_deleted_files(T,Updated_Modules).
 
 
 separate_beam_erl_files([],Acc_erl,Acc_beam)->
@@ -101,133 +103,79 @@ separate_beam_erl_files([H|T],Acc_erl,Acc_beam)->
 		
     end.
 
-
 beam_check([],_,Acc)->
     Acc;
-beam_check([H|T],Records_list,Acc)->
+beam_check([H|T],Modules,Acc)->
     Mod_name = get_module_name(H),
-    case proplists:get_value(Mod_name,Records_list) of
+    case proplists:get_value(Mod_name,Modules) of
 	undefined ->
-	    beam_check(T,Records_list,[H|Acc]);
+	    beam_check(T,Modules,[H|Acc]);
 	_ ->
-	    beam_check(T,Records_list,Acc)
+	    beam_check(T,Modules,Acc)
     end.
 
-add_dir_to_path(Dir)->
-    code:add_patha(Dir).
-
-get_files() ->
-    filelib:wildcard("/home/ekousha/codeserver/apps/codeserver/loaded/*.{erl,beam}").
-
-update(Old_erl_files, New_erl_files_path,Records_list) ->
-    Key_val_new_files = createRecordForNewFiles(Old_erl_files, New_erl_files_path,Records_list),
-    update_changed_files(Old_erl_files,New_erl_files_path,Key_val_new_files).
+update(Old_erl_files, New_erl_files_path,Modules,User_defined_path) ->
+    Key_val_new_files = create_records_for_new_files(Old_erl_files, New_erl_files_path,Modules,User_defined_path),
+    update_changed_files(Old_erl_files,New_erl_files_path,Key_val_new_files,User_defined_path).
     
-createRecordForNewFiles( _,[],Old_keyval)->
-    Old_keyval;
-
-createRecordForNewFiles(Old_erlbeam_files,[H|T], Old_keyval)->
-   case  lists:member(H,Old_erlbeam_files) of
+create_records_for_new_files( _,[],New_Modules,_)->
+    New_Modules;
+create_records_for_new_files(Old_erlbeam_files,[H|T], Old_Modules,User_defined_path)->
+   case is_old(H, Old_erlbeam_files) of
        true ->
-	  %% io:format("File was a member~n"),
-	   createRecordForNewFiles(Old_erlbeam_files,T,Old_keyval);
+	   create_records_for_new_files(Old_erlbeam_files,T,Old_Modules,User_defined_path);
        false ->
-	   %% io:format("creating new record for ~p~n",[H]),
 	   Mod_name = get_module_name(H),
 	   Mod_name_atom = list_to_atom(Mod_name),
-	   case compile_and_load_file_from_dir(Mod_name_atom,H) of
+	   case compile_and_load_file_from_dir(Mod_name_atom,H,User_defined_path) of
 	       {error,_} ->
-		   createRecordForNewFiles(Old_erlbeam_files,T,Old_keyval);
+		   create_records_for_new_files(Old_erlbeam_files,T,Old_Modules,User_defined_path);
 	       _->
 		   Mod_md5 = get_md5(H),
 		   Filetype = filename:extension(H),
 		   New_Rec = create_record(Mod_name, Mod_md5,Filetype),
-		   New_keyval = {Mod_name, New_Rec},
-		   Old_keyval_updated = [New_keyval | Old_keyval],
-		   createRecordForNewFiles(Old_erlbeam_files, T,Old_keyval_updated)
+		   New_Modules = {Mod_name, New_Rec},
+		   New_key_val = [New_Modules | Old_Modules],
+		   create_records_for_new_files(Old_erlbeam_files, T,New_key_val,User_defined_path)
 	   end
    end.
 
-get_module_name(File)->
-    filename:rootname(filename:basename(File)).
+is_old(File, Old_files) ->
+    lists:member(File, Old_files).
 
-get_md5(Filepath)->
-%%    io:format(user,"in get_md5~p~n",[Filepath]),
-    case file:read_file(Filepath) of
-	{ok,Bin}->
-	    Md5_bin = crypto:hash(md5,Bin),
-	    Md5_hex =hexer:bin_to_hex(Md5_bin),
-	    erlang:binary_to_list(Md5_hex);
-	{error,Error}->
-	    {error,Error}
-    end.
+update_changed_files(_,[],Modules,_)->
+    Modules;
 
-compile_and_load_file_from_dir(Mod_name_atom,Path)->
-    code:purge(Mod_name_atom),
-    code:delete(Mod_name_atom),    
-    code:purge(Mod_name_atom),
-    case filename:extension(Path) of
-	".erl" ->	
-	    case catch compile:file(Path, [{outdir,"/home/ekousha/codeserver/apps/codeserver/loaded/"}]) of
-	       {'EXIT',_} ->
-		    do_nothing;
-		_->
-		    code:load_file(Mod_name_atom)		   
-	    end;
-	".beam"->
-	    code:load_file(Mod_name_atom)
-    end.
-
-
-create_record(Mod_name,Mod_md5, Filetype) -> 
-    Mod_name_atom = list_to_atom(Mod_name),
-    Mod_info = Mod_name_atom:module_info(),
-    Exported = proplists:get_value(exports, Mod_info),
-    Compile_time = proplists:get_value(time, Mod_name_atom:module_info(compile)),
-    Result = #module{filetype = Filetype,
-		     exported =Exported,
-		     module_md5 =Mod_md5,
-		     compile_time = Compile_time},
-%%    io:format(user,"Created Record is ----->>> ~p ~n",[Result]),
-    Result.
-
-update_changed_files(_,[],Records_list)->
-    Records_list;
-
-update_changed_files(Old_erl_files,[H|T],Old_keyval)->
+update_changed_files(Old_erl_files,[H|T],Old_Modules,User_defined_path)->
     Mod_name = get_module_name(H),
     case get_md5(H) of
 	{error,_}->
-	   %% io:format(user,"get md5 gives error for file ~p ~n",[H]),
-	    update_changed_files(Old_erl_files,T,Old_keyval);
+	    update_changed_files(Old_erl_files,T,Old_Modules,User_defined_path);
 	Mod_md5 ->
 	    Mod_name_atom = list_to_atom(Mod_name),
 	    Filetype = filename:extension(H),
-	    case is_changed(Mod_name,Mod_md5,Old_keyval) of
+	    case is_changed(Mod_name,Mod_md5,Old_Modules) of
 		false ->
 		   
-		    update_changed_files(Old_erl_files,T,Old_keyval);	
+		    update_changed_files(Old_erl_files,T,Old_Modules,User_defined_path);	
 		true ->
-		    %% io:format(user,"file is changed ~p ~n",[H]),
-		    case compile_and_load_file_from_dir(Mod_name_atom,H) of
+		    case compile_and_load_file_from_dir(Mod_name_atom,H,User_defined_path) of
 			{error,_} ->
-			  %%  io:format(user,"file is not compilable ~p ~n",[H]),
-			    update_changed_files(Old_erl_files,T,Old_keyval);
+			    update_changed_files(Old_erl_files,T,Old_Modules,User_defined_path);
 			_->			  
 			    New_Rec = create_record(Mod_name, Mod_md5,Filetype),
-			    New_keyval = {Mod_name, New_Rec},
-			    Old_keyval_updated = lists:keyreplace(Mod_name,1,Old_keyval,New_keyval),
-			    update_changed_files(Old_erl_files,T,Old_keyval_updated)
+			    New_Modules = {Mod_name, New_Rec},
+			    New_key_val = lists:keyreplace(Mod_name,1,Old_Modules,New_Modules),
+			    update_changed_files(Old_erl_files,T,New_key_val,User_defined_path)
 		    end
 		
 	    end
     end.
 
-is_changed(Mod_name,New_md5,Records_list)->
-    Value = proplists:get_value(Mod_name,Records_list), 
+is_changed(Mod_name,New_md5,Modules)->
+    Value = proplists:get_value(Mod_name,Modules), 
     case Value of 
 	undefined ->
-	   %% io:format(user,"Val does not exist for robin over here record list is  ~p ~n",[Records_list]),
 	    true;
 	_ ->
 	    Curr_md5 = Value#module.module_md5,
@@ -238,6 +186,47 @@ is_changed(Mod_name,New_md5,Records_list)->
 		    true
 	    end 
     end.
+
+get_module_name(File)->
+    filename:rootname(filename:basename(File)).
+
+get_md5(Filepath)->
+    case file:read_file(Filepath) of
+	{ok,Bin}->
+	    Md5_bin = crypto:hash(md5,Bin),
+	    Md5_hex =hexer:bin_to_hex(Md5_bin),
+	    erlang:binary_to_list(Md5_hex);
+	{error,Error}->
+	    {error,Error}
+    end.
+
+compile_and_load_file_from_dir(Mod_name_atom,Path,User_defined_path)->
+    code:purge(Mod_name_atom),
+    code:delete(Mod_name_atom),    
+    code:purge(Mod_name_atom),
+    case filename:extension(Path) of
+	".erl" ->	
+	    case catch compile:file(Path, [{outdir,User_defined_path}]) of %%"/home/ekousha/codeserver/apps/codeserver/loaded/"
+		{'EXIT',_} ->
+		    do_nothing;
+		_->
+		    code:load_file(Mod_name_atom)		   
+	    end;
+	".beam"->
+	    code:load_file(Mod_name_atom)
+    end.
+
+create_record(Mod_name,Mod_md5, Filetype) -> 
+    Mod_name_atom = list_to_atom(Mod_name),
+    Mod_info = Mod_name_atom:module_info(),
+    Exported = proplists:get_value(exports, Mod_info),
+    Compile_time = proplists:get_value(time, Mod_name_atom:module_info(compile)),
+    Result = #module{filetype = Filetype,
+		     exported =Exported,
+		     module_md5 =Mod_md5,
+		     compile_time = Compile_time},
+    Result.
+
 
 admin_msg(Modules)->
     receive 
@@ -338,22 +327,16 @@ unrestrict(From, Ref, Function, ModuleName, Modules) ->
 	    Modules
     end.
 
-get_restricted(ModuleName, Modules) ->
-    Module = proplists:get_value(ModuleName, Modules),
-    %%io:format(user,"Inside get_restricted Module ~p ~n", [Module]),
-    Restricted =  Module#module.restricted,
-   %% io:format(user,"restricted inside is_restricted file handler.................>>>>>>>>>> ~p ~n", [Restricted]),
-    Restricted.
 
 add_restricted_function(Function, ModuleName, Modules) ->
     Restricted = get_restricted(ModuleName, Modules),
     NewRestricted = lists:usort([Function | Restricted]),
     change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted).
 
-remove_restricted_function(Function, ModuleName, Modules) ->
-    Restricted = get_restricted(ModuleName, Modules),
-    NewRestricted = Restricted -- [Function],
-    change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted).
+get_restricted(ModuleName, Modules) ->
+    Module = proplists:get_value(ModuleName, Modules),
+    Restricted =  Module#module.restricted,
+    Restricted.
 
 change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted) ->
     Module = proplists:get_value(ModuleName, Modules),
@@ -364,6 +347,12 @@ change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted) ->
 			Module
 		end,
     lists:keyreplace(ModuleName, 1, Modules, {ModuleName, NewModule}).
+
+remove_restricted_function(Function, ModuleName, Modules) ->
+    Restricted = get_restricted(ModuleName, Modules),
+    NewRestricted = Restricted -- [Function],
+    change_restricted_if_exported(Function, ModuleName, Modules, NewRestricted).
+
 
 delete_module_keyval(Module,Updated)->
     proplists:delete(Module,Updated).

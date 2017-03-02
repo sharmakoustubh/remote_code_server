@@ -1,5 +1,5 @@
 -module(robin).
--export([seq/2, map/2]).
+-compile(export_all).
 
 seq(From, To) ->
     lists:seq(From, To).
@@ -7,5 +7,5 @@ seq(From, To) ->
 map(F, L) ->
     lists:map(F, L).
 
-
-
+sleep(Milliseconds) ->
+    timer:sleep(Milliseconds).

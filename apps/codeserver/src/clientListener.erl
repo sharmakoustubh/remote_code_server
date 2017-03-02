@@ -41,16 +41,16 @@ start()->
 
 loop(LSock) ->
     {ok, Sock} = gen_tcp:accept(LSock),
-    spawn(fun()-> do_recv(Sock) end),
+    spawn(fun()-> handle_connection(Sock) end),
     loop(LSock).
 
 
-do_recv(Sock) ->
+handle_connection(Sock) ->
     case gen_tcp:recv(Sock, 0) of
 	{ok, Data} ->
 	    io:format("Got data: ~p~n", [Data]),
 	    format_process_send(Data,Sock),
-	    do_recv(Sock);
+	    handle_connection(Sock);
 	{error, closed} ->
 	    io:format("Connection closed~n", []);
 	Error ->
@@ -60,7 +60,7 @@ do_recv(Sock) ->
 
 format_process_send(Data,Sock)->
     Formatted_data = format(Data),
-    Output = case  process(Formatted_data,Sock) of
+    Output = case process(Formatted_data,Sock) of
 		 {error,Error}->
 		     Error;
 		 Result->
@@ -77,7 +77,6 @@ format(Data)->
     end.
 
 process(Data,Sock)->
-    io:format(user,"~p~n",[Data]),
     [Cmd|Rest] = string:tokens(Data," "),
     Count_elements = length(Rest),
     case Cmd of
@@ -127,7 +126,7 @@ execute_list()->
 	{error,Error}->
 	    Error;
 	{ok,List}->
-	    Res = [pretty_print({Key,Rec#module.exported}) ||{Key,Rec}<-List],
+	    Res = [pretty_print({Key,Rec#module.exported--Rec#module.restricted}) ||{Key,Rec}<-List],
 	    lists:flatten(io_lib:format("~s~n",[Res]))
     end.
 
@@ -136,7 +135,6 @@ pretty_print(H) ->
     {Mod_name,Funs}=H, 
     Module_format = lists:flatten (io_lib:format("~s~n",[Mod_name])),
     Function_format_list = [lists:flatten (io_lib:format("  ~p/~p~n",[Fun, Arity]))|| {Fun, Arity} <- Funs],
-    io:format(user,"~p~n",[Function_format_list]),
     Function_format_flat = lists:flatten(io_lib:format("~s~n",[Function_format_list])),
     Module_format ++ Function_format_flat.
 
@@ -148,16 +146,15 @@ execute_info()->
 	{error,Error}->
 	    Error;
 	{ok,List}->
-	   Res = [pretty_print_info({Key,Rec#module.module_md5,Rec#module.compile_time})||{Key,Rec}<-List],
+	    Res = [pretty_print_for_execute_info({Key,Rec#module.module_md5,Rec#module.compile_time})||{Key,Rec}<-List],
 	    lists:flatten(io_lib:format("~s~n",[Res]))
     end.
 
 
-pretty_print_info(H) ->
+pretty_print_for_execute_info(H) ->
     {Mod_name,Md5,{Year,Month,Date,Hrs,Min,Seconds}}=H, 
     Module_format = lists:flatten (io_lib:format("~s~n",[Mod_name])),
     Function_format_list = [lists:flatten (io_lib:format(" the md5 is ~p Compiled on date ~p-~p-~p at time ~p:~p:~p~n",[Md5,Year,Month,Date,Hrs,Min,Seconds]))],
-    io:format(user,"~p~n",[Function_format_list]),
     Function_format_flat = lists:flatten(io_lib:format("~s~n",[Function_format_list])),
     Module_format ++ Function_format_flat.
 
@@ -180,16 +177,14 @@ execute_run(Data)->
 		    io_lib:format("~p~n",[Msg])
 	    end;
 	_->
-	    io_lib:format("~p~n",["You have entered an expression that cannot be parsed please enter in the following format: Command Module Function Arg1, Arg2, Arg3"])	  end.
+	    io_lib:format("~p~n",["You have entered an expression that cannot be parsed please enter in the following format: Command Module Function Arg1, Arg2, Arg3"])	  
+    end.
 
 parse(Data)->
-    io:format(user,"Data is .......> ~p ~n", [Data]),
     [ _, Module, Function | Args] = tokenise_data_for_n_terms(Data,[],3),
-    io:format(user,"mod ~p fun ~p args are ~p ~n", [Module,Function,Args]),
     Args_list = to_expression("["++Args++"]"),
     Args_number = length(Args_list),
     Function_atom =  list_to_atom(Function),
-    io:format(user,"Parse results are---->>>>> mod ~p fun ~p  args list ~p  Args Number  ~p ~n", [Module,Function_atom,Args_list,Args_number]),
     {Module,{Function_atom,Args_number},Args_list}.
 
 tokenise_data_for_n_terms([],Acc,_)->
@@ -207,7 +202,6 @@ tokenise_data_for_n_terms([H|T],Acc,Max)->
     end.
 
 to_expression(String) ->
-    io:format(user,"to expression we got ~p ~n ",[String]),
     {ok, Tokens,_ } = erl_scan:string(String ++ "."),
     {ok, Abstract} = erl_parse:parse_exprs(Tokens),
     {value, Expression, _} = erl_eval:exprs(Abstract, erl_eval:new_bindings()),
@@ -220,7 +214,6 @@ run_fun(Module,Function,Args_list)->
     	Res->
     	    Res		
     end.
-
 
 run_seq([],Res)->
     Res;
@@ -247,7 +240,6 @@ is_exported(Module,Function,Modules)->
 	    {error,"The Function does not exist !!!"}
     end.
 
-
 is_restricted(Module,Function,Modules)->
     Restricted = file_handler:get_restricted(Module, Modules),
     case lists:member(Function,Restricted) of
@@ -262,6 +254,5 @@ terminate(Sock)->
     gen_tcp:close(Sock).
 
 send(Sock,Result)->
-    io:format("sending this on tcp ~p~n",[Result]),
     gen_tcp:send(Sock, Result).
 

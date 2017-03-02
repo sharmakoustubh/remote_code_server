@@ -20,10 +20,8 @@ adminListener_test_() ->
      ]}.
 
 
-
-
 setup() ->
-    ok = file_handler:start(),
+    ok = file_handler:start("/home/ekousha/codeserver/apps/codeserver/loaded/"),
     ok = adminListener:start().
 
 cleanup(_) ->
@@ -56,8 +54,6 @@ port_already_in_use()->
     Result = adminListener:start(),
     ?assertMatch(Expect,Result).
     
-
-
 start_server()->
     Pid= whereis(adminListener),
     io:format("~p~n",[Pid]),    
@@ -65,9 +61,8 @@ start_server()->
 
 check_format()->
     Expect = ["restrict","module", "function","2"], %% mODULE IS IN STRING AND fUNCTION IS IN ATOM,
-    Result = adminListener:check_format("restrict module function 2"),
+    Result = adminListener:format("restrict module function 2"),
     ?assertMatch(Expect, Result).
-
 
 check_parse()->
     Expect = {"My_mod",{my_fun,2}},
@@ -86,92 +81,3 @@ execute_unrestrict_should_return_ok_upon_pass()->
 execute_delete_module_keyval_should_return_ok_upon_pass()->
     Result = adminListener:execute_delete(["delete","ets_table1"]), 
     ?assertEqual(ok,Result).
-
-%% execute_list_clients_should_provide_details_of_socks()->
-%%     Sock = <0.43>,
-%%     Result = adminListener:execute_list_clients(Sock), 
-%%     ?assertEqual(ok,Result).
-
-
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-%% admin_msg_restrict()->
-%%     Module = {"my_moduleRes", #module{restricted = []}},
-%%     Result = file_handler:restrict("my_moduleRes", {fRes, 0}, [Module]),
-%%     Expected = [{"my_moduleRes",#module{restricted = [{fRes, 0}]}}],
-%%     ?assertEqual(Expected, Result).
-
-%% admin_msg_unrestrict()->
-%%     Module = {"my_module", #module{restricted = [{f, 0}]}},
-%%     Result = file_handler:unrestrict("my_module", {f, 0}, [Module]),
-%%     Expected = [{"my_module",#module{restricted = []}}],
-%%     ?assertEqual(Expected, Result).
-
-%% admin_msg_delete_module()->
-%%     Expected = {ok,deleted_module},
-%%     Ref = make_ref(),
-
-%%     file_handler ! {self(), Ref, delete_module,"ets_table1"},
-%%     Got    = receive  
-%% 		 {Ref,Result}->
-%% 		     Result
-%% 	     after 5000->
-%% 		     {error,timeout}
-%% 	     end,
-%%     ?assertMatch(Expected,Got).
-
-%% check_files_in_directory() ->
-%%     Result = file_handler:get_files(),
-%%     Expected = ["/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"],
-%%     ?assertEqual(Expected, Result).
-
-%% load_file_from_dir()-> 
-%%     Expected = {module,ets_table1},
-%%     Result =file_handler:compile_and_load_file_from_dir(ets_table1,"/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"),
-%%     ?assertEqual(Expected, Result).
-
-%% check_module_name()->
-%%     Input1 = "/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl",
-%%     Result = file_handler:get_module_name(Input1),
-%%     Expected = "ets_table1",
-%%     ?assertEqual(Expected, Result).
-
-%% add_dir_to_path()->
-%%     Expected = true, 
-%%     Result = file_handler:add_dir_to_path("/home/ekousha/codeserver/apps/codeserver/loaded"),
-%%     ?assertEqual(Expected,Result).
-
-%% get_md5()->
-%%     Expected = "2FEFF17C44894ADFB17326621C8ACA8A",
-%%     Got =  file_handler:get_md5("/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"),
-%%     ?assertMatch(Expected,Got).

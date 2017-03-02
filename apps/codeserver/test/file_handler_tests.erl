@@ -22,7 +22,7 @@ file_handler_test_() ->
 
 
 setup() ->
-    file_handler:start().
+    file_handler:start("/home/ekousha/codeserver/apps/codeserver/loaded/").
 
 cleanup(_) ->
     exit(whereis(file_handler),kill),
@@ -40,7 +40,6 @@ ensure_exited() ->
 
 spawn_file_handler_process()->
     Pid= whereis(file_handler),
-    %%   io:format("~p~n",[Pid]),    
     ?assertMatch(true,is_pid(Pid)).
 
 admin_msg_restrict()->
@@ -57,8 +56,6 @@ admin_msg_restrict_undefined_function_input()->
 admin_msg_unrestrict()->
     file_handler:restrict("ets_table1", {start, 0}),
     Result = file_handler:unrestrict("ets_table1", {start, 0}),
-    %% Module = {"my_module", #module{restricted = [{f, 0}]}},
-    %% Result = file_handler:unrestrict(self(),make_ref(),"my_module", {f, 0}),
     Expected = {ok,"the function in module was unrestricted"},
     ?assertEqual(Expected, Result).
 
@@ -76,7 +73,7 @@ admin_msg_delete_module()->
 
 load_file_from_dir()-> 
     Expected = {module,ets_table1},
-    Result =file_handler:compile_and_load_file_from_dir(ets_table1,"/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"),
+    Result =file_handler:compile_and_load_file_from_dir(ets_table1,"/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl","/home/ekousha/codeserver/apps/codeserver/loaded/"),
     ?assertEqual(Expected, Result).
 
 check_module_name()->
@@ -117,7 +114,7 @@ delete_files(_)->
     os:cmd("rm ~/codeserver/apps/codeserver/loaded/movingbeam.beam").
 
 check_a_src_file_is_loaded()->
-    file_handler:compile_and_load_file_from_dir(flyingfile,"/home/ekousha/codeserver/apps/codeserver/loaded/flyingfile.erl"),
+    file_handler:compile_and_load_file_from_dir(flyingfile,"/home/ekousha/codeserver/apps/codeserver/loaded/flyingfile.erl","/home/ekousha/codeserver/apps/codeserver/loaded/"),
     Result = case catch flyingfile:module_info() of
 		 {'EXIT',_}->
 		     not_loaded;
@@ -127,7 +124,7 @@ check_a_src_file_is_loaded()->
     ?assertEqual(ok,Result).
 
 check_a_beam_file_is_loaded()->
-    file_handler:compile_and_load_file_from_dir(movingbeam,"/home/ekousha/codeserver/apps/codeserver/loaded/movingbeam.beam"),
+    file_handler:compile_and_load_file_from_dir(movingbeam,"/home/ekousha/codeserver/apps/codeserver/loaded/movingbeam.beam","/home/ekousha/codeserver/apps/codeserver/loaded/"),
     Result = case catch movingbeam:module_info() of
 		 {'EXIT',_}->
 		     not_loaded;
@@ -145,14 +142,11 @@ fetch_and_amendfile_test_() ->
       {"check fetch gives required output",fun check_fetch/0}
      ]}.
 
-
-
 setup2() ->
     setup(),
     Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
     os:cmd("cp /home/ekousha/codeserver/apps/codeserver/test/dummies/amend_file.erl " ++ Target),
     ?assertEqual(true, filelib:is_file(Target)).
-    
 
 cleanup2(Args) ->
     cleanup(Args),
@@ -163,23 +157,16 @@ cleanup2(Args) ->
 check_amended_file_is_changed_in_rec()->
     timer:sleep(500),
     {ok,Res1} = file_handler:fetch(),
-   %% io:format(user,"before adding new fun in amend_file~p~n",[Res1]),
     Mod_rec1 = proplists:get_value("amend_file",Res1),
-
     R1_exported = Mod_rec1#module.exported,
     ?assertMatch([{my_fun_in_amend,0},{module_info,0},{module_info,1}],R1_exported),
     Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
     os:cmd("cp /home/ekousha/codeserver/apps/codeserver/loadedtmp/amend_file.erl " ++ Target),
-
     timer:sleep(500),
-  %%  io:format(user, "which? ~p~n", [code:which(amend_file)]),
     {ok,Res2} = file_handler:fetch(),
-  %%  io:format(user,"after adding new fun in amend_file~p~n",[Res2]),
     Mod_rec2 = proplists:get_value("amend_file",Res2),
     R2_exported = Mod_rec2#module.exported,
-
     ?assertEqual(lists:sort([{new_fun,0},{my_fun_in_amend,0},{module_info,0},{module_info,1}]),lists:sort(R2_exported)).
-
 
 check_fetch()->   
     timer:sleep(500),
@@ -202,7 +189,7 @@ check_fetch()->
                            _}},
                   {"robin",
                    {module,".erl",[],
-                           [{seq,2},{map,2},{module_info,0},{module_info,1}],
+                           [{seq,2},{map,2},{sleep,1},{module_info,0},{module_info,1}],
                            _,
                            _}}],Result).
 

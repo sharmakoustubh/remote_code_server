@@ -16,7 +16,7 @@ clientListener_test_() ->
      ]}.
 
 setup() ->
-    ok = file_handler:start(),
+    ok = file_handler:start("/home/ekousha/codeserver/apps/codeserver/loaded/"),
     ok = clientListener:start().
 
 cleanup(_) ->
@@ -63,13 +63,4 @@ check_parse()->
     Expect = {"are",{you,2},[a, b]},
     Result = clientListener:parse("how are you a,b"),
     ?assertMatch(Expect,Result).
-
-tokenise_data_for_n_terms()->
-    Input = "please tokenise tillhere \"dont tokenise\" this",
-    Expect = ["please","tokenise","tillhere","\"dont tokenise\" this"],
-    Result = clientListener:tokenise_data_for_n_terms(Input,[],3),
-    ?assertMatch(Expect,Result).
-
-
-
 

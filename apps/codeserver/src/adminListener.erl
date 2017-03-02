@@ -1,6 +1,6 @@
 -module(adminListener).
 -export([start/0,
-	 check_format/1,
+	 format/1,
 	 parse/1,
 	 execute_restrict/1,
 	 execute_unrestrict/1,
@@ -33,23 +33,18 @@ start()->
 	    Error
     end.	
 
-
-
 loop(LSock) ->
     {ok, Sock} = gen_tcp:accept(LSock),
-    spawn(fun()-> do_recv(Sock) end),
+    spawn(fun()-> handle_connection(Sock) end),
     loop(LSock).
 
 
-%% restrict module function 2
-
-
-do_recv(Sock) ->
+handle_connection(Sock) ->
     case gen_tcp:recv(Sock, 0) of
 	{ok, Data} ->
 	    io:format("Got data: ~p~n", [Data]),
-	    check_process_send(Data,Sock),
-	    do_recv(Sock);
+	    format_process_send(Data,Sock),
+	    handle_connection(Sock);
 	{error, closed} ->
 	    io:format("Connection closed~n", []);
 	Error ->
@@ -57,19 +52,17 @@ do_recv(Sock) ->
     end.
 
 
-check_process_send(Data,Sock)->
-    Formatted_data = check_format(Data),
+format_process_send(Data,Sock)->
+    Formatted_data = format(Data),
     Result =  process(Formatted_data,Sock),
-  %%  io:format(user,"tcp send data Result~p~n",[Result]),
-    
     send(Sock,Result).
 
-check_format(Data)->
+format(Data)->
     Data_without_nextline = Data -- "\n",
     string:tokens(Data_without_nextline," "). 
 
 process(Data,Sock)->
-    Count_elements = count(Data,0),
+    Count_elements = length(Data),
     case hd(Data) of
     	"restrict"->
 	    case Count_elements of
@@ -118,7 +111,6 @@ process(Data,Sock)->
     	    "This command is not executable; Executable commands are restrict,unrestrict,delete,list_clients,exit"
     end.
 
-
 execute_restrict(Data)->
     {Module,{Function,Arity}} = parse(Data),
     case file_handler:restrict(Module,{Function,Arity}) of 
@@ -142,7 +134,6 @@ execute_unrestrict(Data)->
 	    Result	    
     end.
 
-
 execute_delete(Data)->
     Module = parse_delete_module(Data),
     case file_handler:delete_module_keyval(Module) of 
@@ -153,13 +144,9 @@ execute_delete(Data)->
 		
     end.
 
-
 execute_list_clients(Sock)->
    {ok,{{IP1,IP2,IP3,IP4},Port}} = inet:sockname(Sock),
-%%    Result = lists:flatten(io_lib:format("~p", [IP]))++lists:flatten(io_lib:format("~p", [Port])),
-    
     Result = lists:flatten(io_lib:format("~p", [Port])),
-
     "IP is "++ integer_to_list(IP1)++"."++integer_to_list(IP2)++"."++ integer_to_list(IP3)++"."++ integer_to_list(IP4)++"."++"and port of the clients are "++Result.
 
 parse(Data)->
@@ -178,9 +165,4 @@ terminate(Sock)->
 send(Sock,Result)->
     Formatted_data = io_lib:format("~p~n",[Result]),
     gen_tcp:send(Sock, Formatted_data).
-
-count([],Counter)->
-    Counter;
-count([_H|T],Counter)->
-    count(T,Counter+1).
 
