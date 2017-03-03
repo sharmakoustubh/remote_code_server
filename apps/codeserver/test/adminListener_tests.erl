@@ -21,14 +21,14 @@ adminListener_test_() ->
 
 
 setup() ->
-    ok = file_handler:start("/home/ekousha/codeserver/apps/codeserver/loaded/"),
+    ok = file_handler:start("loaded/"),
     ok = adminListener:start().
 
 cleanup(_) ->
     exit(whereis(adminListener),kill),
     ensure_exited_adminListener(),
     exit(whereis(file_handler),kill),
-    file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.beam"),
+    file:delete("loaded/ets_table1.beam"),
     ensure_exited_file_handler().
 
 ensure_exited_file_handler() ->

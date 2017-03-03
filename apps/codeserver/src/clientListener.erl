@@ -18,8 +18,8 @@
 start()->
     Ref = make_ref(),
     Parent = self(),
-    io:format("Starting clientListener server"),
-    Result = gen_tcp:listen(50557, [list, {packet, 0},{active, false},{reuseaddr, true}]),
+    io:format("Starting clientListener server~n"),
+    Result = gen_tcp:listen(50557, [list, {packet, 0},{active, false}]),
     case Result of
 	{ok,LSock}->	
 	    spawn(fun()-> 
@@ -37,13 +37,10 @@ start()->
 	    Error
     end.
 
-
-
 loop(LSock) ->
     {ok, Sock} = gen_tcp:accept(LSock),
     spawn(fun()-> handle_connection(Sock) end),
     loop(LSock).
-
 
 handle_connection(Sock) ->
     case gen_tcp:recv(Sock, 0) of
@@ -56,7 +53,6 @@ handle_connection(Sock) ->
 	Error ->
 	    io:format("Unhandled error: ~p~n", [Error])
     end.
-
 
 format_process_send(Data,Sock)->
     Formatted_data = format(Data),

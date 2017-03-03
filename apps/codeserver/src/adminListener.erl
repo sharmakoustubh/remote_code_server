@@ -14,8 +14,8 @@
 start()->
     Ref = make_ref(),
     Parent = self(),
-    io:format("Starting adminListener server"),
-    Result = gen_tcp:listen(50556, [list, {packet, 0},{active, false},{reuseaddr, true}]),
+    io:format("Starting adminListener server~n"),
+    Result = gen_tcp:listen(50556, [list, {packet, 0}, {active, false}]),
     case Result of
 	{ok,LSock}->	
 	    spawn(fun()-> 

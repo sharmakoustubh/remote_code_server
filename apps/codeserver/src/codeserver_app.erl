@@ -17,8 +17,9 @@
 
 start(_StartType, _StartArgs) ->
     codeserver_sup:start_link(),
-    file_handler:start(),
-    adminListener:start().
+    clientListener:start(),
+    adminListener:start(),
+    file_handler:start("loaded/").
 
 %%--------------------------------------------------------------------
 stop(_State) ->

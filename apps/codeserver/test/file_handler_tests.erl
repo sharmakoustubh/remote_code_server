@@ -22,11 +22,11 @@ file_handler_test_() ->
 
 
 setup() ->
-    file_handler:start("/home/ekousha/codeserver/apps/codeserver/loaded/").
+    file_handler:start("loaded/").
 
 cleanup(_) ->
     exit(whereis(file_handler),kill),
-    file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.beam"),
+    file:delete("loaded/ets_table1.beam"),
     ensure_exited().
 
 ensure_exited() ->
@@ -73,24 +73,24 @@ admin_msg_delete_module()->
 
 load_file_from_dir()-> 
     Expected = {module,ets_table1},
-    Result =file_handler:compile_and_load_file_from_dir(ets_table1,"/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl","/home/ekousha/codeserver/apps/codeserver/loaded/"),
+    Result =file_handler:compile_and_load_file_from_dir(ets_table1,"loaded/ets_table1.erl","loaded/"),
     ?assertEqual(Expected, Result).
 
 check_module_name()->
-    Input1 = "/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl",
+    Input1 = "loaded/ets_table1.erl",
     Result = file_handler:get_module_name(Input1),
     Expected = "ets_table1",
     ?assertEqual(Expected, Result).
 
 add_dir_to_path()->
     Expected = true, 
-    Result = file_handler:add_dir_to_path("/home/ekousha/codeserver/apps/codeserver/loaded"),
+    Result = file_handler:add_dir_to_path("loaded"),
     ?assertEqual(Expected,Result).
 
 
 get_md5()->
     Expected = "8CE9FCB2B010A44FD97CD3AFBC9FD3CD",
-    Got =  file_handler:get_md5("/home/ekousha/codeserver/apps/codeserver/loaded/ets_table1.erl"),
+    Got =  file_handler:get_md5("loaded/ets_table1.erl"),
     ?assertMatch(Expected,Got).
 
 loading_test_()->
@@ -105,16 +105,16 @@ loading_test_()->
      ]}.
 
 copy_files()->
-    os:cmd("cp ~/codeserver/apps/codeserver/test/flyingfile.erl ~/codeserver/apps/codeserver/loaded"),
-    os:cmd("cp ~/codeserver/apps/codeserver/test/movingbeam.beam ~/codeserver/apps/codeserver/loaded").
+    os:cmd("cp test/flyingfile.erl loaded"),
+    os:cmd("cp test/movingbeam.beam loaded").
 
 delete_files(_)->
-    os:cmd("rm ~/codeserver/apps/codeserver/loaded/flyingfile.erl"),
-    os:cmd("rm ~/codeserver/apps/codeserver/loaded/flyingfile.beam"),
-    os:cmd("rm ~/codeserver/apps/codeserver/loaded/movingbeam.beam").
+    os:cmd("rm loaded/flyingfile.erl"),
+    os:cmd("rm loaded/flyingfile.beam"),
+    os:cmd("rm loaded/movingbeam.beam").
 
 check_a_src_file_is_loaded()->
-    file_handler:compile_and_load_file_from_dir(flyingfile,"/home/ekousha/codeserver/apps/codeserver/loaded/flyingfile.erl","/home/ekousha/codeserver/apps/codeserver/loaded/"),
+    file_handler:compile_and_load_file_from_dir(flyingfile,"loaded/flyingfile.erl","loaded/"),
     Result = case catch flyingfile:module_info() of
 		 {'EXIT',_}->
 		     not_loaded;
@@ -124,7 +124,7 @@ check_a_src_file_is_loaded()->
     ?assertEqual(ok,Result).
 
 check_a_beam_file_is_loaded()->
-    file_handler:compile_and_load_file_from_dir(movingbeam,"/home/ekousha/codeserver/apps/codeserver/loaded/movingbeam.beam","/home/ekousha/codeserver/apps/codeserver/loaded/"),
+    file_handler:compile_and_load_file_from_dir(movingbeam,"loaded/movingbeam.beam","loaded/"),
     Result = case catch movingbeam:module_info() of
 		 {'EXIT',_}->
 		     not_loaded;
@@ -144,14 +144,14 @@ fetch_and_amendfile_test_() ->
 
 setup2() ->
     setup(),
-    Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
-    os:cmd("cp /home/ekousha/codeserver/apps/codeserver/test/dummies/amend_file.erl " ++ Target),
+    Target = "loaded/amend_file.erl",
+    os:cmd("cp test/dummies/amend_file.erl " ++ Target),
     ?assertEqual(true, filelib:is_file(Target)).
 
 cleanup2(Args) ->
     cleanup(Args),
-    file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl"),
-    file:delete("/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.beam").
+    file:delete("loaded/amend_file.erl"),
+    file:delete("loaded/amend_file.beam").
 
 	     
 check_amended_file_is_changed_in_rec()->
@@ -160,8 +160,8 @@ check_amended_file_is_changed_in_rec()->
     Mod_rec1 = proplists:get_value("amend_file",Res1),
     R1_exported = Mod_rec1#module.exported,
     ?assertMatch([{my_fun_in_amend,0},{module_info,0},{module_info,1}],R1_exported),
-    Target = "/home/ekousha/codeserver/apps/codeserver/loaded/amend_file.erl",
-    os:cmd("cp /home/ekousha/codeserver/apps/codeserver/loadedtmp/amend_file.erl " ++ Target),
+    Target = "loaded/amend_file.erl",
+    os:cmd("cp loadedtmp/amend_file.erl " ++ Target),
     timer:sleep(500),
     {ok,Res2} = file_handler:fetch(),
     Mod_rec2 = proplists:get_value("amend_file",Res2),

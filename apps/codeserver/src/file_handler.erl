@@ -22,21 +22,9 @@
 -include("record_definition.hrl").
 
 start(User_defined_path)->
-    Ref = make_ref(),
-    Parent = self(),
-    spawn(fun() ->		  
-		  register(?MODULE,self()),
-		  Parent ! {ok, Ref},
-		  add_dir_to_path(User_defined_path),
-		  loop([],[],User_defined_path)
-		  
-	  end),
-    receive
-	{ok,Ref} ->
-	    ok
-    after 1000 ->
-	    {error, "Couldn't start main"}
-    end.
+    register(?MODULE,self()),
+    add_dir_to_path(User_defined_path),
+    loop([], [], User_defined_path).
 
 
 add_dir_to_path(Dir)->
